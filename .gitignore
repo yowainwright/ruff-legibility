@@ -3,6 +3,18 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+.coverage*
+htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.claude/
+CLAUDE.md
+.beads/
+venv/
+*.pyc

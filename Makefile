@@ -1,4 +1,4 @@
-.PHONY: build check clean format lint test
+.PHONY: build check clean format lint test test-python test-scripts
 
 check: lint test build
 
@@ -9,8 +9,13 @@ lint:
 format:
 	uv run ruff format .
 
-test:
+test: test-python test-scripts
+
+test-python:
 	uv run pytest
+
+test-scripts:
+	./test_setup.sh
 
 build:
 	uv build

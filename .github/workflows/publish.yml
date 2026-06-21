@@ -11,16 +11,19 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ruff-legibility/
     permissions:
       contents: write
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Setup uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: "3.14"
           enable-cache: true
@@ -28,10 +31,14 @@ jobs:
         run: uv python install 3.14
       - name: Install dependencies
         run: uv sync --locked --all-groups
-      - name: Validate
-        run: make check
+      - name: Lint
+        run: make lint
+      - name: Test
+        run: make test
+      - name: Build release artifacts
+        run: uv build --no-sources
       - name: Publish to PyPI
-        run: uv publish
+        run: uv publish --trusted-publishing always
       - name: Publish GitHub release assets
         env:
           GITHUB_TOKEN: ${{ github.token }}
