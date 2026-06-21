@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest a rule, CLI option, or integration.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Use case
+      description: What readability or review problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Include examples of code that should and should not be reported.
+    validations:
+      required: true

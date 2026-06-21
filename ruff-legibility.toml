@@ -1,0 +1,3 @@
+select = ["LEG"]
+max-if-operators = 3
+max-control-flow-depth = 6
