@@ -89,16 +89,26 @@ def _print_diagnostics(diagnostics: list[Diagnostic], *, output_format: str) -> 
 
     for diagnostic in diagnostics:
         if output_format == "github":
+            file_name = _escape_github_command_property(diagnostic.path.as_posix())
+            message = _escape_github_command_data(f"{diagnostic.code} {diagnostic.message}")
             print(
-                f"::warning file={diagnostic.path.as_posix()},"
+                f"::warning file={file_name},"
                 f"line={diagnostic.line},col={diagnostic.column}::"
-                f"{diagnostic.code} {diagnostic.message}"
+                f"{message}"
             )
         else:
             print(
                 f"{diagnostic.path.as_posix()}:{diagnostic.line}:{diagnostic.column}: "
                 f"{diagnostic.code} {diagnostic.message}"
             )
+
+
+def _escape_github_command_data(value: str) -> str:
+    return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def _escape_github_command_property(value: str) -> str:
+    return _escape_github_command_data(value).replace(":", "%3A").replace(",", "%2C")
 
 
 def _print_rules() -> None:

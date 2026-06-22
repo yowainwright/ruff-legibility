@@ -7,7 +7,8 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from ruff_legibility.cli import main
+from ruff_legibility.cli import _print_diagnostics, main
+from ruff_legibility.core import Diagnostic
 
 
 class CliTests(unittest.TestCase):
@@ -64,6 +65,26 @@ class CliTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertEqual(stderr.getvalue(), "")
             self.assertEqual(json.loads(stdout.getvalue())[0]["code"], "LEG006")
+
+    def test_github_output_escapes_workflow_command_values(self) -> None:
+        diagnostics = [
+            Diagnostic(
+                path=Path("dir:name,with\nnewline.py"),
+                line=1,
+                column=2,
+                code="LEG999",
+                message="first line\n::error::injected%message",
+            )
+        ]
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout):
+            _print_diagnostics(diagnostics, output_format="github")
+
+        output = stdout.getvalue()
+        self.assertEqual(output.count("\n"), 1)
+        self.assertIn("file=dir%3Aname%2Cwith%0Anewline.py", output)
+        self.assertIn("LEG999 first line%0A::error::injected%25message", output)
 
 
 if __name__ == "__main__":
