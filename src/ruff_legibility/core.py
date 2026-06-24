@@ -40,10 +40,19 @@ def check_path(path: Path, settings: Settings) -> list[Diagnostic]:
 
 
 def check_source(source: str, *, path: Path, settings: Settings) -> list[Diagnostic]:
-    native_diagnostics = check_source_native(source, path=path, settings=settings)
-    if native_diagnostics is not None:
-        return _filter_diagnostics(native_diagnostics, source=source, settings=settings)
+    native_result = check_source_native(source, path=path, settings=settings)
+    if native_result is not None:
+        native_diagnostics, fallback_settings = native_result
+        if _has_syntax_error(native_diagnostics):
+            return _filter_diagnostics(native_diagnostics, source=source, settings=settings)
+        python_diagnostics = _check_source_python(source, path=path, settings=fallback_settings)
+        return _filter_diagnostics(native_diagnostics + python_diagnostics, source=source, settings=settings)
 
+    python_diagnostics = _check_source_python(source, path=path, settings=settings)
+    return _filter_diagnostics(python_diagnostics, source=source, settings=settings)
+
+
+def _check_source_python(source: str, *, path: Path, settings: Settings) -> list[Diagnostic]:
     try:
         tree = ast.parse(source, filename=path.as_posix(), type_comments=True)
     except SyntaxError as error:
@@ -62,7 +71,11 @@ def check_source(source: str, *, path: Path, settings: Settings) -> list[Diagnos
     _annotate_parents(tree)
     visitor = LegibilityVisitor(path=path, settings=settings, source=source)
     visitor.visit(tree)
-    return _filter_diagnostics(visitor.diagnostics, source=source, settings=settings)
+    return visitor.diagnostics
+
+
+def _has_syntax_error(diagnostics: list[Diagnostic]) -> bool:
+    return any(diagnostic.code == "LEG999" for diagnostic in diagnostics)
 
 
 def discover_python_files(paths: Iterable[Path], settings: Settings) -> list[Path]:

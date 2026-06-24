@@ -39,6 +39,28 @@ DEFAULT_EXCLUDE = (
     "venv",
 )
 
+INT_CONFIG_OPTIONS = {
+    "max-expression-operators": "max_expression_operators",
+    "max-if-operators": "max_if_operators",
+    "max-ternary-operators": "max_ternary_operators",
+    "max-computed-value-operators": "max_computed_value_operators",
+    "max-control-flow-depth": "max_control_flow_depth",
+    "max-array-chain-depth": "max_array_chain_depth",
+    "min-object-lookup-chain-length": "min_object_lookup_chain_length",
+    "min-dirname-match-depth": "min_dirname_match_depth",
+}
+
+INT_OVERRIDE_FIELDS = (
+    "max_expression_operators",
+    "max_if_operators",
+    "max_ternary_operators",
+    "max_computed_value_operators",
+    "max_control_flow_depth",
+    "max_array_chain_depth",
+    "min_object_lookup_chain_length",
+    "min_dirname_match_depth",
+)
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -146,14 +168,13 @@ def apply_overrides(
     if ignore is not None:
         validate_selectors(ignore)
         updates["ignore"] = ignore
-    if max_expression_operators is not None:
-        updates["max_expression_operators"] = max_expression_operators
-    if max_if_operators is not None:
-        updates["max_if_operators"] = max_if_operators
-    if max_ternary_operators is not None:
-        updates["max_ternary_operators"] = max_ternary_operators
-    if max_control_flow_depth is not None:
-        updates["max_control_flow_depth"] = max_control_flow_depth
+
+    override_values = locals()
+    for field_name in INT_OVERRIDE_FIELDS:
+        value = override_values[field_name]
+        if value is not None:
+            updates[field_name] = value
+
     return replace(settings, **updates)
 
 
@@ -193,13 +214,7 @@ def apply_config(settings: Settings, table: dict[str, Any]) -> Settings:
             for pattern, codes in per_file_ignores.items()
         }
 
-    int_options = {
-        "max-expression-operators": "max_expression_operators",
-        "max-if-operators": "max_if_operators",
-        "max-ternary-operators": "max_ternary_operators",
-        "max-control-flow-depth": "max_control_flow_depth",
-    }
-    for option_name, field_name in int_options.items():
+    for option_name, field_name in INT_CONFIG_OPTIONS.items():
         if option_name not in table:
             continue
         value = table[option_name]
