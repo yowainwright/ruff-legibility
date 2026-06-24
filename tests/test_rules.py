@@ -7,8 +7,13 @@ from ruff_legibility.config import Settings
 from ruff_legibility.core import check_source
 
 
-def codes(source: str, *, settings: Settings | None = None) -> list[str]:
-    diagnostics = check_source(source, path=Path("example.py"), settings=settings or Settings())
+def codes(
+    source: str,
+    *,
+    path: Path = Path("example.py"),
+    settings: Settings | None = None,
+) -> list[str]:
+    diagnostics = check_source(source, path=path, settings=settings or Settings())
     return [diagnostic.code for diagnostic in diagnostics]
 
 
@@ -113,6 +118,12 @@ def test_entry():
         settings = Settings(select=("LEG017",), executable_runtimes=("python3.11",))
 
         self.assertIn("LEG017", codes(source, settings=settings))
+
+    def test_mixed_filename_casing_allows_screaming_kebab_case(self) -> None:
+        settings = Settings(select=("LEG026",))
+
+        self.assertNotIn("LEG026", codes("value = 1\n", path=Path("FEATURE-FLAG.py"), settings=settings))
+        self.assertIn("LEG026", codes("value = 1\n", path=Path("Feature-flag.py"), settings=settings))
 
 
 if __name__ == "__main__":

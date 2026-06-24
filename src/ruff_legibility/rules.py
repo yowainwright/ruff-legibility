@@ -1387,7 +1387,8 @@ def _matches_any_path_pattern(path_text: str, patterns: tuple[str, ...]) -> bool
 
 
 def _has_allowed_shebang(source: str, runtimes: tuple[str, ...]) -> bool:
-    first_line = source.splitlines()[0] if source.splitlines() else ""
+    lines = source.splitlines()
+    first_line = lines[0] if lines else ""
     if not first_line.startswith("#!"):
         return False
     return any(_shebang_uses_runtime(first_line, runtime) for runtime in runtimes)
@@ -1450,10 +1451,10 @@ def _mixed_filename_casing_name(path: Path) -> str | None:
     has_underscore = base_name.find("_") >= 0
     has_upper = any(character.isupper() for character in base_name)
     has_lower = any(character.islower() for character in base_name)
-    mixes_hyphen_upper = has_hyphen and has_upper
-    mixes_underscore_case = has_underscore and has_upper and has_lower
+    has_mixed_case = has_upper and has_lower
+    mixes_separator_case = (has_hyphen or has_underscore) and has_mixed_case
     mixes_separators = has_hyphen and has_underscore
-    if mixes_hyphen_upper or mixes_underscore_case or mixes_separators:
+    if mixes_separator_case or mixes_separators:
         return base_name
     return None
 
