@@ -103,6 +103,17 @@ def f(flag):
 """
         self.assertNotIn("LEG006", codes(source))
 
+    def test_direct_python_bin_smoke_uses_configured_runtime(self) -> None:
+        source = """
+import subprocess
+
+def test_entry():
+    subprocess.run(["python3.11", "scripts/entry.py"])
+"""
+        settings = Settings(select=("LEG017",), executable_runtimes=("python3.11",))
+
+        self.assertIn("LEG017", codes(source, settings=settings))
+
 
 if __name__ == "__main__":
     unittest.main()

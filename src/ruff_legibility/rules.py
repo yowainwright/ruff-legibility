@@ -718,7 +718,11 @@ class LegibilityVisitor(ast.NodeVisitor):
         if not self.settings.enabled("LEG017"):
             return
 
-        entry = _direct_python_entry(node, self.settings.direct_bin_entry_patterns)
+        entry = _direct_python_entry(
+            node,
+            self.settings.direct_bin_entry_patterns,
+            self.settings.executable_runtimes,
+        )
         if entry is None:
             return
 
@@ -1068,7 +1072,11 @@ def _is_fresh_mutation_target(node: ast.Call) -> bool:
     return isinstance(target, (ast.List, ast.Dict, ast.Set, ast.Call))
 
 
-def _direct_python_entry(node: ast.Call, patterns: tuple[str, ...]) -> str | None:
+def _direct_python_entry(
+    node: ast.Call,
+    patterns: tuple[str, ...],
+    runtimes: tuple[str, ...],
+) -> str | None:
     if not _is_subprocess_call(node):
         return None
 
@@ -1077,7 +1085,7 @@ def _direct_python_entry(node: ast.Call, patterns: tuple[str, ...]) -> str | Non
         return None
 
     command = parts[0]
-    if not _is_python_runtime(command):
+    if not _is_python_runtime(command, runtimes):
         return None
 
     return _first_direct_entry(parts[1:], patterns)
@@ -1129,9 +1137,9 @@ def _literal_string(node: ast.AST) -> str | None:
     return None
 
 
-def _is_python_runtime(command: str) -> bool:
+def _is_python_runtime(command: str, runtimes: tuple[str, ...]) -> bool:
     command_name = command.rsplit("/", maxsplit=1)[-1]
-    return command_name in DEFAULT_EXECUTABLE_RUNTIMES
+    return command_name in runtimes
 
 
 def _first_direct_entry(parts: list[str], patterns: tuple[str, ...]) -> str | None:
