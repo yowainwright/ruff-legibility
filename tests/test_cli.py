@@ -23,7 +23,7 @@ class CliTests(unittest.TestCase):
 
             output = json.loads(stdout.getvalue())
             self.assertEqual(exit_code, 1)
-            self.assertEqual(output[0]["code"], "LEG006")
+            self.assertIn("LEG006", [item["code"] for item in output])
 
     def test_cli_exit_zero(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -50,7 +50,7 @@ class CliTests(unittest.TestCase):
             main(["--version"])
 
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("ruff-legibility 0.1.0", stdout.getvalue())
+        self.assertIn("ruff-legibility 0.2.0", stdout.getvalue())
 
     def test_default_check_accepts_check_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -64,7 +64,8 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(stderr.getvalue(), "")
-            self.assertEqual(json.loads(stdout.getvalue())[0]["code"], "LEG006")
+            output = json.loads(stdout.getvalue())
+            self.assertIn("LEG006", [item["code"] for item in output])
 
     def test_github_output_escapes_workflow_command_values(self) -> None:
         diagnostics = [

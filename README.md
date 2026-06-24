@@ -86,8 +86,11 @@ This repository includes a `ruff-legibility.toml` for its own source. The defaul
 | `LEG003` | Limit nested control-flow depth. | on |
 | `LEG004` | Avoid complex ternary expressions. | on |
 | `LEG005` | Flag likely quadratic patterns such as nested loops and repeated membership checks in loops. | on |
-| `LEG006` | Avoid redundant boolean comparisons like `flag == True`. | on |
+| `LEG006` | Avoid redundant boolean comparisons and boolean ternaries like `flag == True` or `True if flag else False`. | on |
 | `LEG007` | Prefer positive condition names over names like `is_not_ready`. | on |
+| `LEG008` | Avoid trivial wrapper functions that only forward parameters to another call. | on |
+| `LEG009` | Avoid `else` branches after a branch that already exits. | on |
+| `LEG010` | Prefer guard clauses over wrapping the main path in one large `if` block. | on |
 
 ## Pre-commit
 

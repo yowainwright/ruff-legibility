@@ -47,7 +47,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     top_level_flags = {"-h", "--help", "--version"}
     if not argv or (argv[0] not in {"check", "rules"} and argv[0] not in top_level_flags):
-        argv = ["check", *argv]
+        argv = ["check"] + argv
 
     parser = argparse.ArgumentParser(prog="ruff-legibility")
     parser.add_argument("--version", action="version", version=f"ruff-legibility {__version__}")
@@ -76,9 +76,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def _check_files(files: list[Path], settings) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
-    for file in files:
-        diagnostics.extend(check_path(file, settings))
+    diagnostics = [diagnostic for file in files for diagnostic in check_path(file, settings)]
     return sorted(diagnostics)
 
 

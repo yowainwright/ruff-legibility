@@ -56,12 +56,45 @@ def f(flag):
 """
         self.assertIn("LEG006", codes(source))
 
+    def test_redundant_boolean_ternary_reports(self) -> None:
+        source = """
+def f(flag):
+    return True if flag else False
+"""
+        self.assertIn("LEG006", codes(source))
+
     def test_negative_condition_name_reports(self) -> None:
         source = """
 def f(is_not_ready):
     return is_not_ready
 """
         self.assertIn("LEG007", codes(source))
+
+    def test_trivial_wrapper_function_reports(self) -> None:
+        source = """
+def normalize(value):
+    return clean(value)
+"""
+        self.assertIn("LEG008", codes(source))
+
+    def test_prefer_early_return_reports_else_after_terminal_branch(self) -> None:
+        source = """
+def f(flag):
+    if flag:
+        return 1
+    else:
+        return 2
+"""
+        self.assertIn("LEG009", codes(source))
+
+    def test_prefer_guard_clause_reports_wrapped_main_path(self) -> None:
+        source = """
+def f(is_ready):
+    if is_ready:
+        prepare()
+        finish()
+"""
+        self.assertIn("LEG010", codes(source))
 
     def test_noqa_suppresses_specific_rule(self) -> None:
         source = """

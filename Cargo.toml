@@ -1,0 +1,21 @@
+[package]
+name = "ruff-legibility-native"
+version = "0.2.0"
+edition = "2024"
+description = "Native Ruff parser backend for ruff-legibility."
+license = "MIT"
+repository = "https://github.com/yowainwright/ruff-legibility"
+
+[lib]
+name = "_native"
+path = "src/native/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.27", features = ["extension-module"] }
+ruff_python_ast = { git = "https://github.com/astral-sh/ruff.git", branch = "main", package = "ruff_python_ast" }
+ruff_python_parser = { git = "https://github.com/astral-sh/ruff.git", branch = "main", package = "ruff_python_parser" }
+ruff_source_file = { git = "https://github.com/astral-sh/ruff.git", branch = "main", package = "ruff_source_file" }
+ruff_text_size = { git = "https://github.com/astral-sh/ruff.git", branch = "main", package = "ruff_text_size" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

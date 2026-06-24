@@ -10,4 +10,4 @@ __all__ = ["Diagnostic", "RULES", "check_path", "check_source"]
 try:
     __version__ = version("ruff-legibility")
 except PackageNotFoundError:
-    __version__ = "0.1.0"
+    __version__ = "0.2.0"
