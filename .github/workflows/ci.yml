@@ -48,12 +48,12 @@ jobs:
       - name: Install Python
         run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies
-        run: uv sync --locked --all-groups
+        run: uv sync --locked --all-groups --no-install-project
       - name: Lint
-        run: uv run ruff check .
+        run: uv run --no-sync ruff check .
       - name: Legibility self-check
-        run: uv run ruff-legibility check src tests
+        run: PYTHONPATH=src uv run --no-sync python -m ruff_legibility check src tests
       - name: Test
-        run: uv run pytest
+        run: uv run --no-sync pytest
       - name: Build
         run: uv build --no-sources
