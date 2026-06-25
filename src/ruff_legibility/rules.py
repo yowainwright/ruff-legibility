@@ -247,12 +247,27 @@ class LegibilityVisitor(ast.NodeVisitor):
         self.control_depth = 0
         self.loop_depth = 0
         self.alias_scopes: list[AliasScope] = []
+        self.subprocess_module_names: set[str] = set()
+        self.subprocess_call_names: set[str] = set()
 
     def visit_Module(self, node: ast.Module) -> None:
         self._check_module_path_rules(node)
         self._enter_alias_scope()
         self._visit_many(node.body)
         self._leave_alias_scope()
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            if alias.name == "subprocess":
+                self.subprocess_module_names.add(alias.asname or alias.name)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.module != "subprocess":
+            return
+
+        for alias in node.names:
+            if _is_subprocess_method(alias.name):
+                self.subprocess_call_names.add(alias.asname or alias.name)
 
     def visit_If(self, node: ast.If) -> None:
         self._check_condition(node.test)
@@ -722,6 +737,8 @@ class LegibilityVisitor(ast.NodeVisitor):
             node,
             self.settings.direct_bin_entry_patterns,
             self.settings.executable_runtimes,
+            self.subprocess_module_names,
+            self.subprocess_call_names,
         )
         if entry is None:
             return
@@ -1076,8 +1093,10 @@ def _direct_python_entry(
     node: ast.Call,
     patterns: tuple[str, ...],
     runtimes: tuple[str, ...],
+    subprocess_module_names: set[str],
+    subprocess_call_names: set[str],
 ) -> str | None:
-    if not _is_subprocess_call(node):
+    if not _is_subprocess_call(node, subprocess_module_names, subprocess_call_names):
         return None
 
     parts = _command_parts(node)
@@ -1091,13 +1110,17 @@ def _direct_python_entry(
     return _first_direct_entry(parts[1:], patterns)
 
 
-def _is_subprocess_call(node: ast.Call) -> bool:
+def _is_subprocess_call(
+    node: ast.Call,
+    module_names: set[str],
+    call_names: set[str],
+) -> bool:
     if isinstance(node.func, ast.Name):
-        return _is_subprocess_method(node.func.id)
+        return node.func.id in call_names
     if not isinstance(node.func, ast.Attribute):
         return False
     owner = _stable_name(node.func.value)
-    if owner != "subprocess":
+    if owner not in module_names:
         return False
     return _is_subprocess_method(node.func.attr)
 

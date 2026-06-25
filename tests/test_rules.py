@@ -119,6 +119,31 @@ def test_entry():
 
         self.assertIn("LEG017", codes(source, settings=settings))
 
+    def test_direct_python_bin_smoke_supports_subprocess_imports(self) -> None:
+        source = """
+from subprocess import run as subprocess_run
+import subprocess as sp
+
+def test_entry():
+    subprocess_run(["python", "scripts/entry.py"])
+    sp.call(["python", "scripts/entry.py"])
+"""
+        settings = Settings(select=("LEG017",))
+
+        self.assertEqual(codes(source, settings=settings).count("LEG017"), 2)
+
+    def test_direct_python_bin_smoke_ignores_unqualified_user_functions(self) -> None:
+        source = """
+def run(command):
+    return command
+
+def test_entry():
+    run(["python", "scripts/entry.py"])
+"""
+        settings = Settings(select=("LEG017",))
+
+        self.assertNotIn("LEG017", codes(source, settings=settings))
+
     def test_mixed_filename_casing_allows_screaming_kebab_case(self) -> None:
         settings = Settings(select=("LEG026",))
 
