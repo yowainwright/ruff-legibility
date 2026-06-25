@@ -6,7 +6,15 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from .rules import DEFAULT_SELECT, RULES
+from .rules import (
+    DEFAULT_ALLOWED_FILENAME_QUALIFIERS,
+    DEFAULT_ALLOWED_STANDALONE_FILENAMES,
+    DEFAULT_DIRECT_BIN_ENTRY_PATTERNS,
+    DEFAULT_EXECUTABLE_ENTRY_PATTERNS,
+    DEFAULT_EXECUTABLE_RUNTIMES,
+    DEFAULT_SELECT,
+    RULES,
+)
 
 DEFAULT_EXCLUDE = (
     ".bzr",
@@ -31,6 +39,28 @@ DEFAULT_EXCLUDE = (
     "venv",
 )
 
+INT_CONFIG_OPTIONS = {
+    "max-expression-operators": "max_expression_operators",
+    "max-if-operators": "max_if_operators",
+    "max-ternary-operators": "max_ternary_operators",
+    "max-computed-value-operators": "max_computed_value_operators",
+    "max-control-flow-depth": "max_control_flow_depth",
+    "max-array-chain-depth": "max_array_chain_depth",
+    "min-object-lookup-chain-length": "min_object_lookup_chain_length",
+    "min-dirname-match-depth": "min_dirname_match_depth",
+}
+
+INT_OVERRIDE_FIELDS = (
+    "max_expression_operators",
+    "max_if_operators",
+    "max_ternary_operators",
+    "max_computed_value_operators",
+    "max_control_flow_depth",
+    "max_array_chain_depth",
+    "min_object_lookup_chain_length",
+    "min_dirname_match_depth",
+)
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -41,10 +71,23 @@ class Settings:
     max_expression_operators: int = 4
     max_if_operators: int = 0
     max_ternary_operators: int = 2
+    max_computed_value_operators: int = 1
     max_control_flow_depth: int = 3
+    max_array_chain_depth: int = 2
+    min_object_lookup_chain_length: int = 3
+    min_dirname_match_depth: int = 3
+    allowed_filename_qualifiers: tuple[str, ...] = DEFAULT_ALLOWED_FILENAME_QUALIFIERS
+    allowed_standalone_filenames: tuple[str, ...] = DEFAULT_ALLOWED_STANDALONE_FILENAMES
+    executable_entry_patterns: tuple[str, ...] = DEFAULT_EXECUTABLE_ENTRY_PATTERNS
+    executable_runtimes: tuple[str, ...] = DEFAULT_EXECUTABLE_RUNTIMES
+    direct_bin_entry_patterns: tuple[str, ...] = DEFAULT_DIRECT_BIN_ENTRY_PATTERNS
 
     def enabled(self, code: str) -> bool:
-        return selector_matches(code, self.select) and not selector_matches(code, self.ignore)
+        is_selected = selector_matches(code, self.select)
+        is_ignored = selector_matches(code, self.ignore)
+        if not is_selected:
+            return False
+        return not is_ignored
 
     def ignored_for_path(self, code: str, path: Path) -> bool:
         path_text = path.as_posix()
@@ -55,7 +98,8 @@ class Settings:
 
 
 def selector_matches(code: str, selectors: tuple[str, ...] | list[str] | set[str]) -> bool:
-    return any(code.startswith(selector) for selector in selectors)
+    has_match = any(code.startswith(selector) for selector in selectors)
+    return has_match
 
 
 def parse_selectors(value: str | None) -> tuple[str, ...] | None:
@@ -76,9 +120,13 @@ def validate_selectors(selectors: tuple[str, ...]) -> None:
 def find_config(start: Path | None = None) -> Path | None:
     current = (start or Path.cwd()).resolve()
     if current.is_file():
-        current = current.parent
+        return _find_config_from_directory(current.parent)
 
-    for candidate in _candidate_config_paths(current):
+    return _find_config_from_directory(current)
+
+
+def _find_config_from_directory(directory: Path) -> Path | None:
+    for candidate in _candidate_config_paths(directory):
         if not candidate.is_file():
             continue
         if candidate.name == "pyproject.toml" and not _pyproject_has_config(candidate):
@@ -107,7 +155,11 @@ def apply_overrides(
     max_expression_operators: int | None = None,
     max_if_operators: int | None = None,
     max_ternary_operators: int | None = None,
+    max_computed_value_operators: int | None = None,
     max_control_flow_depth: int | None = None,
+    max_array_chain_depth: int | None = None,
+    min_object_lookup_chain_length: int | None = None,
+    min_dirname_match_depth: int | None = None,
 ) -> Settings:
     updates: dict[str, Any] = {}
     if select is not None:
@@ -116,14 +168,13 @@ def apply_overrides(
     if ignore is not None:
         validate_selectors(ignore)
         updates["ignore"] = ignore
-    if max_expression_operators is not None:
-        updates["max_expression_operators"] = max_expression_operators
-    if max_if_operators is not None:
-        updates["max_if_operators"] = max_if_operators
-    if max_ternary_operators is not None:
-        updates["max_ternary_operators"] = max_ternary_operators
-    if max_control_flow_depth is not None:
-        updates["max_control_flow_depth"] = max_control_flow_depth
+
+    override_values = locals()
+    for field_name in INT_OVERRIDE_FIELDS:
+        value = override_values[field_name]
+        if value is not None:
+            updates[field_name] = value
+
     return replace(settings, **updates)
 
 
@@ -137,7 +188,8 @@ def apply_config(settings: Settings, table: dict[str, Any]) -> Settings:
     extend_selectors = _string_list(table.get("extend-select", table.get("extend_select")), "extend-select")
     if extend_selectors is not None:
         existing_selectors = updates.get("select", settings.select)
-        updates["select"] = (*existing_selectors, *(selector.upper() for selector in extend_selectors))
+        new_selectors = tuple(selector.upper() for selector in extend_selectors)
+        updates["select"] = existing_selectors + new_selectors
 
     ignored = _string_list(table.get("ignore"), "ignore")
     if ignored is not None:
@@ -146,7 +198,8 @@ def apply_config(settings: Settings, table: dict[str, Any]) -> Settings:
     extend_ignored = _string_list(table.get("extend-ignore", table.get("extend_ignore")), "extend-ignore")
     if extend_ignored is not None:
         existing_ignored = updates.get("ignore", settings.ignore)
-        updates["ignore"] = (*existing_ignored, *(selector.upper() for selector in extend_ignored))
+        new_ignored = tuple(selector.upper() for selector in extend_ignored)
+        updates["ignore"] = existing_ignored + new_ignored
 
     excluded = _string_list(table.get("exclude"), "exclude")
     if excluded is not None:
@@ -161,13 +214,7 @@ def apply_config(settings: Settings, table: dict[str, Any]) -> Settings:
             for pattern, codes in per_file_ignores.items()
         }
 
-    int_options = {
-        "max-expression-operators": "max_expression_operators",
-        "max-if-operators": "max_if_operators",
-        "max-ternary-operators": "max_ternary_operators",
-        "max-control-flow-depth": "max_control_flow_depth",
-    }
-    for option_name, field_name in int_options.items():
+    for option_name, field_name in INT_CONFIG_OPTIONS.items():
         if option_name not in table:
             continue
         value = table[option_name]
@@ -192,7 +239,7 @@ def _pyproject_has_config(path: Path) -> bool:
 
 
 def _candidate_config_paths(current: Path) -> tuple[Path, ...]:
-    directories = (current, *current.parents)
+    directories = (current,) + tuple(current.parents)
     names = ("ruff-legibility.toml", ".ruff-legibility.toml", "pyproject.toml")
     return tuple(directory / name for directory in directories for name in names)
 

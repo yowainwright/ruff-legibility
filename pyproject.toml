@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
 
 [project]
 name = "ruff-legibility"
-version = "0.1.0"
+version = "0.2.0"
 description = "Ruff-adjacent Python legibility rules for readable, reviewable code."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -40,11 +40,12 @@ Repository = "https://github.com/yowainwright/ruff-legibility"
 [project.scripts]
 ruff-legibility = "ruff_legibility.cli:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/ruff_legibility"]
-
-[tool.hatch.build.targets.sdist]
-include = ["src", "tests", "README.md", "LICENSE", "pyproject.toml", "ruff-legibility.toml"]
+[tool.maturin]
+python-source = "src"
+module-name = "ruff_legibility._native"
+bindings = "pyo3"
+features = ["pyo3/extension-module"]
+include = ["examples/**/*", "tests/**/*", "ruff-legibility.toml"]
 
 [tool.ruff]
 line-length = 120

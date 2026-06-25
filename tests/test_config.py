@@ -43,6 +43,36 @@ max-expression-operators = 7
         self.assertEqual(settings.select, ("LEG001", "LEG003"))
         self.assertEqual(settings.ignore, ("LEG002", "LEG004"))
 
+    def test_loads_new_integer_options_from_config(self) -> None:
+        settings = apply_config(
+            Settings(),
+            {
+                "max-computed-value-operators": 3,
+                "max-array-chain-depth": 4,
+                "min-object-lookup-chain-length": 5,
+                "min-dirname-match-depth": 6,
+            },
+        )
+
+        self.assertEqual(settings.max_computed_value_operators, 3)
+        self.assertEqual(settings.max_array_chain_depth, 4)
+        self.assertEqual(settings.min_object_lookup_chain_length, 5)
+        self.assertEqual(settings.min_dirname_match_depth, 6)
+
+    def test_cli_overrides_new_integer_options(self) -> None:
+        settings = apply_overrides(
+            Settings(),
+            max_computed_value_operators=3,
+            max_array_chain_depth=4,
+            min_object_lookup_chain_length=5,
+            min_dirname_match_depth=6,
+        )
+
+        self.assertEqual(settings.max_computed_value_operators, 3)
+        self.assertEqual(settings.max_array_chain_depth, 4)
+        self.assertEqual(settings.min_object_lookup_chain_length, 5)
+        self.assertEqual(settings.min_dirname_match_depth, 6)
+
     def test_unknown_config_selector_raises(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unknown rule selector"):
             apply_config(Settings(), {"select": ["NOPE"]})

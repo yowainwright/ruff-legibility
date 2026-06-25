@@ -28,7 +28,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_expression_operators=args.max_expression_operators,
             max_if_operators=args.max_if_operators,
             max_ternary_operators=args.max_ternary_operators,
+            max_computed_value_operators=args.max_computed_value_operators,
             max_control_flow_depth=args.max_control_flow_depth,
+            max_array_chain_depth=args.max_array_chain_depth,
+            min_object_lookup_chain_length=args.min_object_lookup_chain_length,
+            min_dirname_match_depth=args.min_dirname_match_depth,
         )
     except ValueError as error:
         print(f"ruff-legibility: {error}", file=sys.stderr)
@@ -47,7 +51,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     top_level_flags = {"-h", "--help", "--version"}
     if not argv or (argv[0] not in {"check", "rules"} and argv[0] not in top_level_flags):
-        argv = ["check", *argv]
+        argv = ["check"] + argv
 
     parser = argparse.ArgumentParser(prog="ruff-legibility")
     parser.add_argument("--version", action="version", version=f"ruff-legibility {__version__}")
@@ -69,16 +73,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     check.add_argument("--max-expression-operators", type=int)
     check.add_argument("--max-if-operators", type=int)
     check.add_argument("--max-ternary-operators", type=int)
+    check.add_argument("--max-computed-value-operators", type=int)
     check.add_argument("--max-control-flow-depth", type=int)
+    check.add_argument("--max-array-chain-depth", type=int)
+    check.add_argument("--min-object-lookup-chain-length", type=int)
+    check.add_argument("--min-dirname-match-depth", type=int)
 
     subparsers.add_parser("rules", help="list available rules")
     return parser.parse_args(argv)
 
 
 def _check_files(files: list[Path], settings) -> list[Diagnostic]:
-    diagnostics: list[Diagnostic] = []
-    for file in files:
-        diagnostics.extend(check_path(file, settings))
+    diagnostics = [diagnostic for file in files for diagnostic in check_path(file, settings)]
     return sorted(diagnostics)
 
 

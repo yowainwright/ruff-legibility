@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+*.so
 .pytest_cache/
 .ruff_cache/
 .venv/
@@ -7,6 +8,7 @@ __pycache__/
 htmlcov/
 build/
 dist/
+target/
 *.egg-info/
 
 # Beads / Dolt files (added by bd init)

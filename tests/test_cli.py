@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from ruff_legibility.cli import _print_diagnostics, main
 from ruff_legibility.core import Diagnostic
@@ -23,7 +24,7 @@ class CliTests(unittest.TestCase):
 
             output = json.loads(stdout.getvalue())
             self.assertEqual(exit_code, 1)
-            self.assertEqual(output[0]["code"], "LEG006")
+            self.assertIn("LEG006", [item["code"] for item in output])
 
     def test_cli_exit_zero(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -50,7 +51,7 @@ class CliTests(unittest.TestCase):
             main(["--version"])
 
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("ruff-legibility 0.1.0", stdout.getvalue())
+        self.assertIn("ruff-legibility 0.2.0", stdout.getvalue())
 
     def test_default_check_accepts_check_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -64,7 +65,41 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(stderr.getvalue(), "")
-            self.assertEqual(json.loads(stdout.getvalue())[0]["code"], "LEG006")
+            output = json.loads(stdout.getvalue())
+            self.assertIn("LEG006", [item["code"] for item in output])
+
+    def test_cli_passes_new_integer_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "example" / "example.py"
+            path.parent.mkdir()
+            path.write_text("value = 1\n")
+            captured = {}
+
+            def capture_overrides(settings, **kwargs):
+                captured.update(kwargs)
+                return settings
+
+            with patch("ruff_legibility.cli.apply_overrides", side_effect=capture_overrides):
+                exit_code = main(
+                    [
+                        "check",
+                        str(path),
+                        "--max-computed-value-operators",
+                        "3",
+                        "--max-array-chain-depth",
+                        "4",
+                        "--min-object-lookup-chain-length",
+                        "5",
+                        "--min-dirname-match-depth",
+                        "6",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["max_computed_value_operators"], 3)
+            self.assertEqual(captured["max_array_chain_depth"], 4)
+            self.assertEqual(captured["min_object_lookup_chain_length"], 5)
+            self.assertEqual(captured["min_dirname_match_depth"], 6)
 
     def test_github_output_escapes_workflow_command_values(self) -> None:
         diagnostics = [
