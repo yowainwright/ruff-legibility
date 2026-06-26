@@ -11,6 +11,9 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      CARGO_HTTP_MULTIPLEXING: "false"
+      CARGO_NET_RETRY: "10"
     environment:
       name: pypi
       url: https://pypi.org/project/ruff-legibility/
@@ -46,7 +49,21 @@ jobs:
             --sdist
             --out dist
             --interpreter python3.14
-            --compatibility pypi manylinux2014
+            --compatibility manylinux2014
+      - name: Check release artifacts
+        run: |
+          ls -lh dist
+          test -f dist/ruff_legibility-*.tar.gz
+
+          if ! compgen -G "dist/*manylinux*.whl" > /dev/null; then
+            echo "Expected a manylinux wheel in dist." >&2
+            exit 1
+          fi
+
+          if compgen -G "dist/*linux_*.whl" > /dev/null; then
+            echo "Native linux wheels are not publishable to PyPI." >&2
+            exit 1
+          fi
       - name: Publish to PyPI
         run: uv publish --trusted-publishing always
       - name: Publish GitHub release assets

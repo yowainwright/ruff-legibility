@@ -30,6 +30,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    env:
+      CARGO_HTTP_MULTIPLEXING: "false"
+      CARGO_NET_RETRY: "10"
     strategy:
       fail-fast: false
       matrix:
