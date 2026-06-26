@@ -36,7 +36,17 @@ jobs:
       - name: Test
         run: make test
       - name: Build release artifacts
-        run: uv build --no-sources
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          command: build
+          maturin-version: "1.14.1"
+          manylinux: "2014"
+          args: >-
+            --release
+            --sdist
+            --out dist
+            --interpreter python3.14
+            --compatibility pypi manylinux2014
       - name: Publish to PyPI
         run: uv publish --trusted-publishing always
       - name: Publish GitHub release assets
