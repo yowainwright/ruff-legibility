@@ -156,3 +156,41 @@
 # LEG026 no-mixed-filename-casing
 - user_Profile.py
 + user_profile.py
+
+# LEG027 no-identity-comprehension
+- copied = [item for item in items]
++ copied = list(items)
+
+# LEG028 prefer-comprehension-over-map-filter
+- names = list(map(lambda user: user.name, users))
++ names = [user.name for user in users]
+
+# LEG029 no-loop-append-comprehension
+- names = []
+- for user in users:
+-     names.append(user.name)
++ names = [user.name for user in users]
+
+# LEG030 no-repeated-comprehension-filter
+- active_users = [user for user in users if user.active]
+- admin_users = [user for user in users if user.is_admin]
++ filtered_users = [user for user in users if user.active or user.is_admin]
++ active_users = [user for user in filtered_users if user.active]
++ admin_users = [user for user in filtered_users if user.is_admin]
+
+# LEG031 no-deep-subscript-chain
+- return payload["user"]["profile"]["email"]
++ user = payload["user"]
++ profile = user["profile"]
++ return profile["email"]
+
+# LEG032 prefer-named-exception-context
+- except Exception as error:
+-     raise RuntimeError(error)
++ except Exception as error:
++     message = "Failed to load user profile"
++     raise RuntimeError(message) from error
+
+# LEG033 no-boolean-parameter-name-drift
+- is_ready = status != "ready"
++ is_ready = status == "ready"

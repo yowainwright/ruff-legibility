@@ -210,14 +210,15 @@ def apply_config(settings: Settings, table: dict[str, Any]) -> Settings:
         if not isinstance(per_file_ignores, dict):
             raise ValueError("per-file-ignores must be a table")
         updates["per_file_ignores"] = {
-            str(pattern): tuple(code.upper() for code in _required_string_list(codes, str(pattern)))
+            str(pattern): _per_file_ignore_selectors(codes, str(pattern))
             for pattern, codes in per_file_ignores.items()
         }
 
+    missing = object()
     for option_name, field_name in INT_CONFIG_OPTIONS.items():
-        if option_name not in table:
+        value = table.get(option_name, missing)
+        if value is missing:
             continue
-        value = table[option_name]
         if not isinstance(value, int):
             raise ValueError(f"{option_name} must be an integer")
         updates[field_name] = value
@@ -261,6 +262,11 @@ def _string_list(value: Any, name: str) -> list[str] | None:
     if value is None:
         return None
     return _required_string_list(value, name)
+
+
+def _per_file_ignore_selectors(value: Any, pattern: str) -> tuple[str, ...]:
+    codes = _required_string_list(value, pattern)
+    return tuple(code.upper() for code in codes)
 
 
 def _required_string_list(value: Any, name: str) -> list[str]:

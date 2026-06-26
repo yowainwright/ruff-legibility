@@ -93,7 +93,7 @@ RULES = {
     "LEG013": Rule(
         "LEG013",
         "no-hidden-side-effects",
-        "Avoid mutations hidden inside expressions.",
+        "Avoid mutations and assignment expressions hidden inside expressions.",
     ),
     "LEG014": Rule(
         "LEG014",
@@ -159,6 +159,41 @@ RULES = {
         "LEG026",
         "no-mixed-filename-casing",
         "Avoid filenames that mix casing conventions.",
+    ),
+    "LEG027": Rule(
+        "LEG027",
+        "no-identity-comprehension",
+        "Avoid comprehensions that keep every item unchanged.",
+    ),
+    "LEG028": Rule(
+        "LEG028",
+        "prefer-comprehension-over-map-filter",
+        "Prefer comprehensions over map/filter calls with lambdas.",
+    ),
+    "LEG029": Rule(
+        "LEG029",
+        "no-loop-append-comprehension",
+        "Prefer comprehensions over simple list-building append loops.",
+    ),
+    "LEG030": Rule(
+        "LEG030",
+        "no-repeated-comprehension-filter",
+        "Avoid filtering the same collection with comprehensions multiple times in one scope.",
+    ),
+    "LEG031": Rule(
+        "LEG031",
+        "no-deep-subscript-chain",
+        "Avoid deep subscript chains without named intermediate values.",
+    ),
+    "LEG032": Rule(
+        "LEG032",
+        "prefer-named-exception-context",
+        "Prefer named context when wrapping or logging broad exceptions.",
+    ),
+    "LEG033": Rule(
+        "LEG033",
+        "no-boolean-parameter-name-drift",
+        "Avoid positive boolean names assigned from inverted expressions.",
     ),
 }
 
@@ -234,6 +269,22 @@ MUTATING_METHODS = ARRAY_MUTATING_METHODS | frozenset(OTHER_MUTATING_METHOD_NAME
 SEARCH_METHODS = frozenset(SEARCH_METHOD_NAMES)
 SUBPROCESS_METHODS = frozenset(SUBPROCESS_METHOD_NAMES)
 
+BROAD_EXCEPTION_NAMES = frozenset({"BaseException", "Exception"})
+COLLECTION_WRAPPER_FUNCTIONS = frozenset({"list", "set", "tuple"})
+COMPREHENSION_FUNCTIONS = frozenset({"filter", "map"})
+COMPREHENSION_LOOP_MESSAGE = (
+    "Comprehension inside a loop can become O(n^2). Use a precomputed lookup or extract the loop."
+)
+EXCEPTION_LOG_CONTEXT_MESSAGE = "Log a named context message instead of logging the broad exception directly."
+EXCEPTION_WRAP_CONTEXT_MESSAGE = "Add named context when wrapping a broad exception."
+HIDDEN_ASSIGNMENT_MESSAGE = "Avoid assignment expressions hidden inside expressions. Assign the value first."
+IDENTITY_COMPREHENSION_MESSAGE = "Avoid a comprehension that returns each item unchanged."
+INVERTED_COMPARE_OPERATORS = (ast.IsNot, ast.NotEq, ast.NotIn)
+LOG_METHODS = frozenset({"critical", "debug", "error", "exception", "info", "warning"})
+NESTED_COMPREHENSION_MESSAGE = (
+    "Nested comprehension detected. Consider restructuring around a set, dict, or named loop."
+)
+
 
 AliasScope = dict[str, AliasCandidate]
 
@@ -246,6 +297,7 @@ class LegibilityVisitor(ast.NodeVisitor):
         self.diagnostics: list[Diagnostic] = []
         self.control_depth = 0
         self.loop_depth = 0
+        self.comprehension_depth = 0
         self.alias_scopes: list[AliasScope] = []
         self.subprocess_module_names: set[str] = set()
         self.subprocess_call_names: set[str] = set()
@@ -269,13 +321,19 @@ class LegibilityVisitor(ast.NodeVisitor):
             if _is_subprocess_method(alias.name):
                 self.subprocess_call_names.add(alias.asname or alias.name)
 
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        self._check_named_exception_context(node)
+        self.generic_visit(node)
+
     def visit_If(self, node: ast.If) -> None:
         self._check_condition(node.test)
         self._check_early_return(node)
+        self.visit(node.test)
         self._visit_control_body(node, body=node.body, orelse=node.orelse)
 
     def visit_While(self, node: ast.While) -> None:
         self._check_condition(node.test)
+        self.visit(node.test)
         self._visit_loop(node)
 
     def visit_For(self, node: ast.For) -> None:
@@ -345,16 +403,20 @@ class LegibilityVisitor(ast.NodeVisitor):
         self._track_alias_assignment(node)
         for target in node.targets:
             self._check_condition_name(target)
+            self._check_boolean_name_drift(target, node.value)
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if node.value is not None:
             self._check_expression(node.value)
+            self._check_boolean_name_drift(node.target, node.value)
         self._check_condition_name(node.target)
         self.generic_visit(node)
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self._check_hidden_assignment_expression(node)
         self._check_condition_name(node.target)
+        self._check_boolean_name_drift(node.target, node.value)
         self._check_expression(node.value)
         self.generic_visit(node)
 
@@ -376,6 +438,7 @@ class LegibilityVisitor(ast.NodeVisitor):
         self._check_trivial_wrapper_function(node)
         self._check_guard_clause(node)
         self._enter_alias_scope()
+        self._check_statement_pairs(node.body)
         self.generic_visit(node)
         self._leave_alias_scope()
 
@@ -383,6 +446,7 @@ class LegibilityVisitor(ast.NodeVisitor):
         self._check_name(node.name, node)
         self._check_guard_clause(node)
         self._enter_alias_scope()
+        self._check_statement_pairs(node.body)
         self.generic_visit(node)
         self._leave_alias_scope()
 
@@ -426,9 +490,14 @@ class LegibilityVisitor(ast.NodeVisitor):
         self._check_direct_python_bin_smoke(node)
         self._check_hidden_side_effect(node)
         self._check_identity_callback(node)
+        self._check_prefer_comprehension_over_map_filter(node)
         self._check_prefer_flat_comprehension(node)
         self._check_repeated_collection_search(node)
         self._check_standalone_array_mutation(node)
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        self._check_deep_subscript_chain(node)
         self.generic_visit(node)
 
     def visit_Dict(self, node: ast.Dict) -> None:
@@ -448,6 +517,22 @@ class LegibilityVisitor(ast.NodeVisitor):
         self._check_starred_collection(node)
         self.generic_visit(node)
 
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        result_expressions = (node.elt,)
+        self._visit_comprehension(node, result_expressions=result_expressions)
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        result_expressions = (node.elt,)
+        self._visit_comprehension(node, result_expressions=result_expressions)
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        result_expressions = (node.elt,)
+        self._visit_comprehension(node, result_expressions=result_expressions)
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        result_expressions = (node.key, node.value)
+        self._visit_comprehension(node, result_expressions=result_expressions)
+
     def _visit_loop(self, node: ast.For | ast.AsyncFor | ast.While) -> None:
         if self.loop_depth > 0 and self.settings.enabled("LEG005"):
             self._add(
@@ -459,6 +544,25 @@ class LegibilityVisitor(ast.NodeVisitor):
         self.loop_depth += 1
         self._visit_control_body(node, body=node.body, orelse=node.orelse)
         self.loop_depth -= 1
+
+    def _visit_comprehension(
+        self,
+        node: ast.AST,
+        *,
+        result_expressions: Iterable[ast.expr],
+    ) -> None:
+        self._check_comprehension_loop(node)
+        self._check_identity_comprehension(node)
+        self._check_repeated_comprehension_filter(node)
+
+        self.comprehension_depth += 1
+        for generator in _comprehension_generators(node):
+            self.visit(generator.iter)
+            self.visit(generator.target)
+            self._visit_many(generator.ifs)
+
+        self._visit_many(result_expressions)
+        self.comprehension_depth -= 1
 
     def _visit_control_body(
         self,
@@ -486,8 +590,19 @@ class LegibilityVisitor(ast.NodeVisitor):
         self.control_depth -= 1
 
     def _visit_many(self, nodes: Iterable[ast.AST]) -> None:
+        previous: ast.AST | None = None
         for node in nodes:
+            if previous is not None:
+                self._check_loop_append_comprehension(previous, node)
             self.visit(node)
+            previous = node
+
+    def _check_statement_pairs(self, nodes: Iterable[ast.AST]) -> None:
+        previous: ast.AST | None = None
+        for node in nodes:
+            if previous is not None:
+                self._check_loop_append_comprehension(previous, node)
+            previous = node
 
     def _check_condition(self, expression: ast.expr) -> None:
         if not self.settings.enabled("LEG002"):
@@ -570,6 +685,21 @@ class LegibilityVisitor(ast.NodeVisitor):
             "LEG010",
             "Prefer a guard clause instead of wrapping the main path in one large if block.",
         )
+
+    def _check_loop_append_comprehension(self, previous: ast.AST, current: ast.AST) -> None:
+        if not self.settings.enabled("LEG029"):
+            return
+
+        target_name = _empty_list_assignment_name(previous)
+        if target_name is None:
+            return
+
+        append_target = _loop_append_target_name(current)
+        if append_target != target_name:
+            return
+
+        message = f"`{target_name}` is built by a simple append loop. Use a comprehension."
+        self._add(current, "LEG029", message)
 
     def _check_module_path_rules(self, node: ast.Module) -> None:
         self._check_executable_shebang(node)
@@ -685,6 +815,26 @@ class LegibilityVisitor(ast.NodeVisitor):
         message = "Avoid side effects inside expressions. Move this mutation into its own statement."
         self._add(node, "LEG013", message)
 
+    def _check_hidden_assignment_expression(self, node: ast.NamedExpr) -> None:
+        if not self.settings.enabled("LEG013"):
+            return
+
+        is_condition_assignment = _is_inside_condition_test(node)
+        if is_condition_assignment:
+            return
+
+        self._add(node, "LEG013", HIDDEN_ASSIGNMENT_MESSAGE)
+
+    def _check_boolean_name_drift(self, target: ast.AST, value: ast.expr) -> None:
+        if not self.settings.enabled("LEG033"):
+            return
+
+        message = _boolean_name_drift_message(target, value)
+        if message is None:
+            return
+
+        self._add(target, "LEG033", message)
+
     def _check_standalone_array_mutation(self, node: ast.Call) -> None:
         if not self.settings.enabled("LEG014"):
             return
@@ -787,6 +937,16 @@ class LegibilityVisitor(ast.NodeVisitor):
 
         self._add(node, "LEG022", message)
 
+    def _check_prefer_comprehension_over_map_filter(self, node: ast.Call) -> None:
+        if not self.settings.enabled("LEG028"):
+            return
+
+        message = _prefer_comprehension_message(node)
+        if message is None:
+            return
+
+        self._add(node, "LEG028", message)
+
     def _check_prefer_flat_comprehension(self, node: ast.Call) -> None:
         if not self.settings.enabled("LEG021"):
             return
@@ -797,6 +957,63 @@ class LegibilityVisitor(ast.NodeVisitor):
 
         message = "Prefer a flat comprehension over map followed by chain.from_iterable."
         self._add(node, "LEG021", message)
+
+    def _check_identity_comprehension(self, node: ast.AST) -> None:
+        if not self.settings.enabled("LEG027"):
+            return
+
+        message = _identity_comprehension_message(node)
+        if message is None:
+            return
+
+        self._add(node, "LEG027", message)
+
+    def _check_comprehension_loop(self, node: ast.AST) -> None:
+        if not self.settings.enabled("LEG005"):
+            return
+
+        is_inside_comprehension = self.comprehension_depth > 0
+        if is_inside_comprehension:
+            self._add(node, "LEG005", NESTED_COMPREHENSION_MESSAGE)
+            return
+
+        is_inside_loop = self.loop_depth > 0
+        if is_inside_loop:
+            self._add(node, "LEG005", COMPREHENSION_LOOP_MESSAGE)
+
+    def _check_repeated_comprehension_filter(self, node: ast.AST) -> None:
+        if not self.settings.enabled("LEG030"):
+            return
+
+        key = _comprehension_filter_key(node)
+        if key is None:
+            return
+
+        self._track_repeated_comprehension_filter(node, key)
+
+    def _check_deep_subscript_chain(self, node: ast.Subscript) -> None:
+        if not self.settings.enabled("LEG031"):
+            return
+
+        if _has_parent_subscript(node):
+            return
+
+        depth = _subscript_chain_depth(node)
+        if depth < 3:
+            return
+
+        message = f"Subscript chain has {depth} levels. Name an intermediate value."
+        self._add(node, "LEG031", message)
+
+    def _check_named_exception_context(self, node: ast.ExceptHandler) -> None:
+        if not self.settings.enabled("LEG032"):
+            return
+
+        message = _exception_context_message(node)
+        if message is None:
+            return
+
+        self._add(node, "LEG032", message)
 
     def _check_redundant_none_boolop(self, node: ast.BoolOp) -> None:
         if not self.settings.enabled("LEG023"):
@@ -876,6 +1093,19 @@ class LegibilityVisitor(ast.NodeVisitor):
         message = f"`{key}` is searched multiple times in this scope. Build a named lookup."
         self._add(node, "LEG018", message)
 
+    def _track_repeated_comprehension_filter(self, node: ast.AST, key: str) -> None:
+        if not self.alias_scopes:
+            return
+
+        scope = self.alias_scopes[-1]
+        seen_key = f"comprehension-filter:{key}"
+        if seen_key not in scope:
+            scope[seen_key] = AliasCandidate(seen_key, key, node, references=-1)
+            return
+
+        message = f"`{key}` is filtered multiple times in this scope. Build a named filtered collection."
+        self._add(node, "LEG030", message)
+
     def _add(self, node: ast.AST, code: str, message: str) -> None:
         if not self.settings.enabled(code):
             return
@@ -925,6 +1155,253 @@ def _parent(node: ast.AST) -> ast.AST | None:
     if isinstance(parent, ast.AST):
         return parent
     return None
+
+
+def _is_inside_condition_test(node: ast.AST) -> bool:
+    current = node
+    parent = _parent(current)
+    while parent is not None:
+        if _owns_condition_test(parent, current):
+            return True
+        if isinstance(parent, (ast.AsyncFunctionDef, ast.FunctionDef, ast.Lambda)):
+            return False
+        current = parent
+        parent = _parent(parent)
+    return False
+
+
+def _owns_condition_test(parent: ast.AST, child: ast.AST) -> bool:
+    if isinstance(parent, ast.If):
+        return parent.test is child
+    if isinstance(parent, ast.While):
+        return parent.test is child
+    return False
+
+
+def _comprehension_generators(node: ast.AST) -> list[ast.comprehension]:
+    if isinstance(node, ast.DictComp):
+        return node.generators
+    if isinstance(node, ast.GeneratorExp):
+        return node.generators
+    if isinstance(node, ast.ListComp):
+        return node.generators
+    if isinstance(node, ast.SetComp):
+        return node.generators
+    return []
+
+
+def _identity_comprehension_message(node: ast.AST) -> str | None:
+    element = _sequence_comprehension_element(node)
+    if element is None:
+        return None
+
+    generators = _comprehension_generators(node)
+    if len(generators) != 1:
+        return None
+
+    generator = generators[0]
+    target_name = _single_name_target(generator.target)
+    keeps_every_item = not generator.ifs and generator.is_async == 0
+    if not keeps_every_item:
+        return None
+
+    if isinstance(element, ast.Name) and element.id == target_name:
+        return IDENTITY_COMPREHENSION_MESSAGE
+    return None
+
+
+def _sequence_comprehension_element(node: ast.AST) -> ast.expr | None:
+    if isinstance(node, ast.ListComp):
+        return node.elt
+    if isinstance(node, ast.SetComp):
+        return node.elt
+    return None
+
+
+def _single_name_target(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
+
+
+def _prefer_comprehension_message(node: ast.Call) -> str | None:
+    wrapper = _callable_name(node.func)
+    if wrapper not in COLLECTION_WRAPPER_FUNCTIONS:
+        return None
+    if len(node.args) != 1:
+        return None
+
+    inner = node.args[0]
+    if not isinstance(inner, ast.Call):
+        return None
+
+    function_name = _callable_name(inner.func)
+    if function_name not in COMPREHENSION_FUNCTIONS:
+        return None
+    if not _has_simple_lambda_collection_call(inner):
+        return None
+    return f"Prefer a {wrapper} comprehension over {wrapper}({function_name}(...)) with a lambda."
+
+
+def _has_simple_lambda_collection_call(node: ast.Call) -> bool:
+    if len(node.args) != 2:
+        return False
+    callback = node.args[0]
+    return isinstance(callback, ast.Lambda)
+
+
+def _empty_list_assignment_name(node: ast.AST) -> str | None:
+    if not isinstance(node, ast.Assign):
+        return None
+    if len(node.targets) != 1:
+        return None
+
+    target = node.targets[0]
+    value = node.value
+    has_empty_list = isinstance(value, ast.List) and not value.elts
+    if not has_empty_list:
+        return None
+    return _single_name_target(target)
+
+
+def _loop_append_target_name(node: ast.AST) -> str | None:
+    if not isinstance(node, ast.For):
+        return None
+    if node.orelse:
+        return None
+    if len(node.body) != 1:
+        return None
+
+    only_statement = node.body[0]
+    if isinstance(only_statement, ast.If):
+        return _conditional_append_target_name(only_statement)
+    return _append_statement_target_name(only_statement)
+
+
+def _conditional_append_target_name(node: ast.If) -> str | None:
+    if node.orelse:
+        return None
+    if len(node.body) != 1:
+        return None
+    return _append_statement_target_name(node.body[0])
+
+
+def _append_statement_target_name(node: ast.stmt) -> str | None:
+    if not isinstance(node, ast.Expr):
+        return None
+    call = node.value
+    if not isinstance(call, ast.Call):
+        return None
+    if _call_method_name(call) != "append":
+        return None
+    return _stable_name(_call_object(call))
+
+
+def _comprehension_filter_key(node: ast.AST) -> str | None:
+    generators = _comprehension_generators(node)
+    if len(generators) != 1:
+        return None
+
+    generator = generators[0]
+    if not generator.ifs:
+        return None
+    return _stable_name(generator.iter)
+
+
+def _has_parent_subscript(node: ast.Subscript) -> bool:
+    parent = _parent(node)
+    return isinstance(parent, ast.Subscript)
+
+
+def _subscript_chain_depth(node: ast.Subscript) -> int:
+    if isinstance(node.value, ast.Subscript):
+        return 1 + _subscript_chain_depth(node.value)
+    return 1
+
+
+def _is_broad_exception_type(node: ast.expr | None) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in BROAD_EXCEPTION_NAMES
+    return False
+
+
+def _wraps_exception_without_context(statement: ast.stmt, name: str) -> bool:
+    if not isinstance(statement, ast.Raise):
+        return False
+    if statement.exc is None:
+        return False
+    if statement.cause is not None:
+        return False
+    return _contains_load_name(statement.exc, name)
+
+
+def _contains_load_name(node: ast.AST, name: str) -> bool:
+    matches = (_is_load_name(child, name) for child in ast.walk(node))
+    return any(matches)
+
+
+def _is_load_name(node: ast.AST, name: str) -> bool:
+    is_matching_name = isinstance(node, ast.Name) and node.id == name
+    is_load_context = isinstance(getattr(node, "ctx", None), ast.Load)
+    return is_matching_name and is_load_context
+
+
+def _logs_exception_without_context(statement: ast.stmt, name: str) -> bool:
+    if not isinstance(statement, ast.Expr):
+        return False
+    call = statement.value
+    if not isinstance(call, ast.Call):
+        return False
+    if _call_method_name(call) not in LOG_METHODS:
+        return False
+
+    matches = (_is_load_name(argument, name) for argument in call.args)
+    return any(matches)
+
+
+def _exception_context_message(node: ast.ExceptHandler) -> str | None:
+    handler_name = node.name
+    if handler_name is None:
+        return None
+    if not _is_broad_exception_type(node.type):
+        return None
+    if len(node.body) != 1:
+        return None
+
+    statement = node.body[0]
+    if _wraps_exception_without_context(statement, handler_name):
+        return EXCEPTION_WRAP_CONTEXT_MESSAGE
+    if _logs_exception_without_context(statement, handler_name):
+        return EXCEPTION_LOG_CONTEXT_MESSAGE
+    return None
+
+
+def _boolean_name_drift_message(target: ast.AST, value: ast.expr) -> str | None:
+    name = _single_name_target(target)
+    if name is None:
+        return None
+    if not _is_positive_boolean_name(name):
+        return None
+    if not _is_inverted_boolean_expression(value):
+        return None
+    return f"`{name}` is assigned from an inverted expression. Rename it or invert the assignment."
+
+
+def _is_positive_boolean_name(name: str) -> bool:
+    boolean_prefix_match = BOOLEAN_NAME_PATTERN.match(name)
+    if boolean_prefix_match is None:
+        return False
+    return NEGATIVE_CONDITION_PATTERN.match(name) is None
+
+
+def _is_inverted_boolean_expression(node: ast.expr) -> bool:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return True
+    if not isinstance(node, ast.Compare):
+        return False
+
+    matches = (isinstance(operator, INVERTED_COMPARE_OPERATORS) for operator in node.ops)
+    return any(matches)
 
 
 def _call_method_name(node: ast.Call) -> str | None:
@@ -1460,11 +1937,14 @@ def _filename_parts(file_name: str) -> tuple[str, list[str]]:
 
 
 def _unknown_qualifier_problem(qualifiers: list[str], file_name: str, settings: Settings) -> str | None:
-    for qualifier in qualifiers:
-        if qualifier not in settings.allowed_filename_qualifiers:
-            allowed = ", ".join(settings.allowed_filename_qualifiers)
-            return f'Qualifier "{qualifier}" in "{file_name}" is not in the allowed list: {allowed}.'
-    return None
+    allowed_qualifiers = set(settings.allowed_filename_qualifiers)
+    unknown_qualifiers = set(qualifiers) - allowed_qualifiers
+    if not unknown_qualifiers:
+        return None
+
+    qualifier = sorted(unknown_qualifiers)[0]
+    allowed = ", ".join(settings.allowed_filename_qualifiers)
+    return f'Qualifier "{qualifier}" in "{file_name}" is not in the allowed list: {allowed}.'
 
 
 def _mixed_filename_casing_name(path: Path) -> str | None:
