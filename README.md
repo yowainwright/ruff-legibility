@@ -62,7 +62,11 @@ exclude = [".venv", "build", "dist"]
 max-expression-operators = 4
 max-if-operators = 0
 max-ternary-operators = 2
+max-computed-value-operators = 1
 max-control-flow-depth = 3
+max-array-chain-depth = 2
+min-object-lookup-chain-length = 3
+min-dirname-match-depth = 3
 
 [tool.ruff-legibility.per-file-ignores]
 "tests/*" = ["LEG003"]
@@ -91,6 +95,29 @@ This repository includes a `ruff-legibility.toml` for its own source. The defaul
 | `LEG008` | Avoid trivial wrapper functions that only forward parameters to another call. | on |
 | `LEG009` | Avoid `else` branches after a branch that already exits. | on |
 | `LEG010` | Prefer guard clauses over wrapping the main path in one large `if` block. | on |
+| `LEG011` | Limit consecutive collection-style method chains. | on |
+| `LEG012` | Prefer named values before returning computed expressions or building dict values. | on |
+| `LEG013` | Avoid mutations and assignment expressions hidden inside expressions. | on |
+| `LEG014` | Avoid standalone list mutation calls when an expression is clearer. | on |
+| `LEG015` | Prefer explicit collection composition over starred literal unpacking. | on |
+| `LEG016` | Require configured executable Python source files to start with a shebang. | on |
+| `LEG017` | Prefer smoke-testing installed Python package entry points. | on |
+| `LEG018` | Avoid repeated scans over the same collection in one scope. | on |
+| `LEG019` | Avoid aliases that only rename another value for one use. | on |
+| `LEG020` | Avoid lambdas that only forward their parameters to another callable. | on |
+| `LEG021` | Prefer a flat comprehension over map followed by flattening. | on |
+| `LEG022` | Avoid map/filter callbacks that keep every item unchanged. | on |
+| `LEG023` | Avoid fallback expressions that only return `None` unchanged. | on |
+| `LEG024` | Prefer set or dict lookups over long equality-or chains. | on |
+| `LEG025` | Require files in named subdirectories to match the directory name. | on |
+| `LEG026` | Avoid filenames that mix casing conventions. | on |
+| `LEG027` | Avoid comprehensions that keep every item unchanged. | on |
+| `LEG028` | Prefer comprehensions over map/filter calls with lambdas. | on |
+| `LEG029` | Prefer comprehensions over simple list-building append loops. | on |
+| `LEG030` | Avoid filtering the same collection with comprehensions multiple times in one scope. | on |
+| `LEG031` | Avoid deep subscript chains without named intermediate values. | on |
+| `LEG032` | Prefer named context when wrapping or logging broad exceptions. | on |
+| `LEG033` | Avoid positive boolean names assigned from inverted expressions. | on |
 
 ## Pre-commit
 
