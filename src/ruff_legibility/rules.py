@@ -1175,6 +1175,9 @@ def _owns_condition_test(parent: ast.AST, child: ast.AST) -> bool:
         return parent.test is child
     if isinstance(parent, ast.While):
         return parent.test is child
+    if isinstance(parent, ast.comprehension):
+        is_filter_condition = child in parent.ifs
+        return is_filter_condition
     return False
 
 

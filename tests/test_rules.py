@@ -133,6 +133,13 @@ def f():
 """
         self.assertNotIn("LEG013", codes(source))
 
+    def test_hidden_assignment_expression_allows_comprehension_filter(self) -> None:
+        source = """
+def f(items):
+    return [value for item in items if (value := load(item)) is not None]
+"""
+        self.assertNotIn("LEG013", codes(source))
+
     def test_noqa_suppresses_specific_rule(self) -> None:
         source = """
 def f(flag):
@@ -240,6 +247,14 @@ def f():
         source = """
 def f(status):
     is_ready = status != "ready"
+    return is_ready
+"""
+        self.assertIn("LEG033", codes(source, settings=Settings(select=("LEG033",))))
+
+    def test_boolean_parameter_name_drift_reports_not_operator(self) -> None:
+        source = """
+def f(flag):
+    is_ready = not flag
     return is_ready
 """
         self.assertIn("LEG033", codes(source, settings=Settings(select=("LEG033",))))
