@@ -477,7 +477,7 @@ checksum = "6e1dd4122fc1595e8162618945476892eefca7b88c52820e74af6262213cae8f"
 
 [[package]]
 name = "ruff-legibility-native"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "pyo3",
  "ruff_python_ast",
