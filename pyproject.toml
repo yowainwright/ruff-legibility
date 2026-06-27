@@ -45,7 +45,13 @@ python-source = "src"
 module-name = "ruff_legibility._native"
 bindings = "pyo3"
 features = ["pyo3/extension-module"]
-include = ["examples/**/*", "tests/**/*", "ruff-legibility.toml"]
+include = [
+  "examples/**/*",
+  "tests/**/*",
+  "ruff-legibility.toml",
+  "src/ruff_legibility/skills/**/*",
+]
+exclude = ["**/__pycache__/**/*", "**/*.pyc"]
 
 [tool.ruff]
 line-length = 120

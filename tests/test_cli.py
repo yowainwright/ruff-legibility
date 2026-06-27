@@ -45,6 +45,61 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertIn("LEG001 max-expression-operators", stdout.getvalue())
 
+    def test_cli_install_skill_to_custom_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            target_root = Path(directory) / "skills"
+            command = ["install-skill", "--path", str(target_root)]
+
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(command)
+
+            installed = target_root / "ruff-legibility"
+            skill_file = installed / "SKILL.md"
+            openai_file = installed / "agents" / "openai.yaml"
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(stderr.getvalue(), "")
+            self.assertTrue(skill_file.is_file())
+            self.assertTrue(openai_file.is_file())
+            self.assertIn(str(installed), stdout.getvalue())
+
+    def test_cli_install_skill_refuses_existing_without_force(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target_root = Path(directory) / "skills"
+            command = ["install-skill", "--path", str(target_root)]
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                main(command)
+
+            stderr = io.StringIO()
+            with redirect_stdout(io.StringIO()), redirect_stderr(stderr):
+                exit_code = main(command)
+
+            self.assertEqual(exit_code, 2)
+            self.assertIn("--force", stderr.getvalue())
+
+    def test_cli_install_skill_force_replaces_existing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target_root = Path(directory) / "skills"
+            install_command = ["install-skill", "--path", str(target_root)]
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                main(install_command)
+
+            installed = target_root / "ruff-legibility"
+            marker = installed / "marker.txt"
+            force_command = ["install-skill", "--path", str(target_root), "--force"]
+            marker.write_text("stale\n")
+
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                exit_code = main(force_command)
+
+            skill_file = installed / "SKILL.md"
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(marker.exists())
+            self.assertTrue(skill_file.is_file())
+
     def test_cli_version_is_top_level_flag(self) -> None:
         stdout = io.StringIO()
         with self.assertRaises(SystemExit) as raised, redirect_stdout(stdout):

@@ -43,3 +43,9 @@ make check
 Use `.agents/skills/ruff-legibility/SKILL.md` as the shared Claude/Codex skill
 when another agent should run the ruff-legibility feedback loop or maintain this
 project. Do not duplicate the workflow in tool-specific rules.
+
+Installed packages can copy the same skill into a local agent skill root with:
+
+```sh
+ruff-legibility install-skill
+```
