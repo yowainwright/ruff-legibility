@@ -59,7 +59,7 @@ jobs:
             exit 1
           fi
 
-          if compgen -G "dist/*linux_*.whl" > /dev/null; then
+          if compgen -G "dist/*-linux_*.whl" > /dev/null; then
             echo "Native linux wheels are not publishable to PyPI." >&2
             exit 1
           fi
