@@ -22,4 +22,3 @@ CLAUDE.md
 .beads/
 venv/
 *.pyc
-.claude/
