@@ -49,7 +49,6 @@ jobs:
             --sdist
             --out dist
             --interpreter python3.14
-            --compatibility manylinux2014
       - name: Check release artifacts
         run: |
           ls -lh dist
