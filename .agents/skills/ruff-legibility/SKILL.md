@@ -33,6 +33,12 @@ automatically. After installing the package, copy the skill explicitly:
 ruff-legibility install-skill
 ```
 
+To detect a configured or existing known skill root:
+
+```sh
+ruff-legibility install-skill --target auto
+```
+
 For Codex-specific skill roots:
 
 ```sh

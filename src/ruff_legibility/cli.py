@@ -7,10 +7,11 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
+from .agent_skills.constants import DEFAULT_SKILL_TARGET, SKILL_NAME, SKILL_TARGET_CHOICES
+from .agent_skills.installer import default_skill_root, install_skill
 from .config import apply_overrides, load_settings, parse_selectors
 from .core import Diagnostic, check_path, discover_python_files
 from .rules import RULES
-from .skill_installer import SKILL_NAME, default_skill_root, install_skill
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -98,8 +99,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     install_skill_parser = subparsers.add_parser("install-skill", help="install the packaged agent skill")
     install_skill_parser.add_argument(
         "--target",
-        choices=("agents", "codex"),
-        default="agents",
+        choices=SKILL_TARGET_CHOICES,
+        default=DEFAULT_SKILL_TARGET,
         help="agent skill root to install into",
     )
     install_skill_parser.add_argument("--path", help="override the skill root directory")
