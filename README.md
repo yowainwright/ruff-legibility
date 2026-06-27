@@ -612,11 +612,15 @@ uv run pytest
 uv build
 ```
 
-Release builds should use:
+Local release artifact checks should use:
 
 ```sh
 uv build --no-sources
 ```
+
+Tagged releases are published by GitHub Actions. The workflow builds a Python
+3.11+ `abi3` manylinux wheel so supported CPython versions can install without
+building from source.
 
 Publishing is configured for PyPI Trusted Publishing:
 

@@ -29,10 +29,10 @@ jobs:
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           version: "0.7.19"
-          python-version: "3.14"
+          python-version: "3.11"
           enable-cache: true
       - name: Install Python
-        run: uv python install 3.14
+        run: uv python install 3.11
       - name: Install dependencies
         run: uv sync --locked --all-groups
       - name: Lint
@@ -49,14 +49,19 @@ jobs:
             --release
             --sdist
             --out dist
-            --interpreter python3.14
+            --interpreter python3.11
       - name: Check release artifacts
         run: |
           ls -lh dist
           test -f dist/ruff_legibility-*.tar.gz
 
-          if ! compgen -G "dist/*manylinux*.whl" > /dev/null; then
-            echo "Expected a manylinux wheel in dist." >&2
+          if ! compgen -G "dist/*cp311-abi3*manylinux*.whl" > /dev/null; then
+            echo "Expected a Python 3.11+ abi3 manylinux wheel in dist." >&2
+            exit 1
+          fi
+
+          if compgen -G "dist/*-cp3??-cp3??-manylinux*.whl" > /dev/null; then
+            echo "Expected abi3 wheels, not a single-interpreter CPython wheel." >&2
             exit 1
           fi
 
@@ -65,7 +70,7 @@ jobs:
             exit 1
           fi
       - name: Publish to PyPI
-        run: uv publish --trusted-publishing always
+        run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/
       - name: Publish GitHub release assets
         env:
           GITHUB_TOKEN: ${{ github.token }}
