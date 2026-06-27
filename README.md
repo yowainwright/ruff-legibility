@@ -48,6 +48,36 @@ Default text output is intentionally close to Ruff:
 example.py:4:8: LEG002 If condition has 2 boolean operators (max 0). Hoist it into a named boolean.
 ```
 
+## Agent Skill
+
+<!-- agent skill installer command and target config from src/ruff_legibility/agent_skills; packaged files from src/ruff_legibility/skills/ruff-legibility -->
+
+The package includes a reusable Claude/Codex skill, but it is never installed
+automatically. Install it explicitly when you want local agents to use the
+`ruff-legibility` loop:
+
+```sh
+ruff-legibility install-skill
+ruff-legibility install-skill --target auto
+ruff-legibility install-skill --target codex
+ruff-legibility install-skill --path ~/.agents/skills --force
+```
+
+Default installs copy the skill to `~/.agents/skills/ruff-legibility`. Codex
+target installs copy it to `$CODEX_HOME/skills/ruff-legibility`, or
+`~/.codex/skills/ruff-legibility` when `CODEX_HOME` is not set.
+Auto target detection uses the packaged static target registry, prefers a
+configured target such as `CODEX_HOME`, then falls back to an existing known
+skill root, then `~/.agents/skills`.
+Use `--path` for any other agent skill root instead of adding vendor-specific
+folders to this repository.
+
+After installing the skill, use it in an agent prompt:
+
+```text
+Use $ruff-legibility to check Python readability and iterate on LEG diagnostics.
+```
+
 ## Configuration
 
 Configuration can live in `pyproject.toml` under `[tool.ruff-legibility]`, or in `ruff-legibility.toml` / `.ruff-legibility.toml`.

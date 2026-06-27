@@ -7,17 +7,26 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
+from .agent_skills.constants import DEFAULT_SKILL_TARGET, SKILL_NAME, SKILL_TARGET_CHOICES
+from .agent_skills.installer import default_skill_root, install_skill
 from .config import apply_overrides, load_settings, parse_selectors
 from .core import Diagnostic, check_path, discover_python_files
 from .rules import RULES
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parse_args(list(argv) if argv is not None else sys.argv[1:])
+    raw_argv = sys.argv[1:]
+    if argv is not None:
+        raw_argv = list(argv)
+
+    args = _parse_args(raw_argv)
 
     if args.command == "rules":
         _print_rules()
         return 0
+
+    if args.command == "install-skill":
+        return _install_skill_command(args)
 
     try:
         settings = load_settings(Path(args.config) if args.config else None)
@@ -50,7 +59,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     top_level_flags = {"-h", "--help", "--version"}
-    if not argv or (argv[0] not in {"check", "rules"} and argv[0] not in top_level_flags):
+    commands = {"check", "install-skill", "rules"}
+    has_command = bool(argv) and argv[0] in commands
+    has_top_level_flag = bool(argv) and argv[0] in top_level_flags
+    has_known_prefix = has_command or has_top_level_flag
+    should_default_to_check = not argv or not has_known_prefix
+
+    if should_default_to_check:
         argv = ["check"] + argv
 
     parser = argparse.ArgumentParser(prog="ruff-legibility")
@@ -80,7 +95,38 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     check.add_argument("--min-dirname-match-depth", type=int)
 
     subparsers.add_parser("rules", help="list available rules")
+
+    install_skill_parser = subparsers.add_parser("install-skill", help="install the packaged agent skill")
+    install_skill_parser.add_argument(
+        "--target",
+        choices=SKILL_TARGET_CHOICES,
+        default=DEFAULT_SKILL_TARGET,
+        help="agent skill root to install into",
+    )
+    install_skill_parser.add_argument("--path", help="override the skill root directory")
+    install_skill_parser.add_argument("--force", action="store_true", help="replace an existing installed skill")
     return parser.parse_args(argv)
+
+
+def _install_skill_command(args: argparse.Namespace) -> int:
+    target_root = _resolve_skill_root(args)
+
+    try:
+        installed_path = install_skill(target_root, force=args.force)
+    except (FileExistsError, OSError, ValueError) as error:
+        print(f"ruff-legibility: {error}", file=sys.stderr)
+        return 2
+
+    print(f"Installed {SKILL_NAME} skill to {installed_path}")
+    return 0
+
+
+def _resolve_skill_root(args: argparse.Namespace) -> Path:
+    if not args.path:
+        return default_skill_root(args.target)
+
+    target_root = Path(args.path)
+    return target_root.expanduser()
 
 
 def _check_files(files: list[Path], settings) -> list[Diagnostic]:

@@ -1,3 +1,6 @@
 select = ["LEG"]
 max-if-operators = 3
 max-control-flow-depth = 6
+
+[per-file-ignores]
+"src/ruff_legibility/agent_skills/*.py" = ["LEG025"]
