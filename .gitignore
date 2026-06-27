@@ -15,7 +15,9 @@ target/
 .dolt/
 *.db
 .beads-credential-key
-.claude/
+.claude/*
+!.claude/rules/
+!.claude/rules/*.md
 CLAUDE.md
 .beads/
 venv/
