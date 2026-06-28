@@ -4,6 +4,11 @@ All notable user-facing changes to `ruff-legibility` should be recorded here.
 
 ## Unreleased
 
+## 0.3.1
+
+- Build Python 3.11+ `abi3` manylinux release wheels so installs do not fall
+  back to source builds on supported CPython versions.
+
 ## 0.3.0
 
 - Add repository guidance for Claude and Codex agents.

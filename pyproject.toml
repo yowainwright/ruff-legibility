@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "ruff-legibility"
-version = "0.3.0"
+version = "0.3.1"
 description = "Ruff-adjacent Python legibility rules for readable, reviewable code."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -44,7 +44,7 @@ ruff-legibility = "ruff_legibility.cli:main"
 python-source = "src"
 module-name = "ruff_legibility._native"
 bindings = "pyo3"
-features = ["pyo3/extension-module"]
+features = ["pyo3/abi3-py311", "pyo3/extension-module"]
 include = [
   "examples/**/*",
   "tests/**/*",
