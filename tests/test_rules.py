@@ -259,6 +259,74 @@ def f(flag):
 """
         self.assertIn("LEG033", codes(source, settings=Settings(select=("LEG033",))))
 
+    def test_unmatched_comments_reports_prose_and_inline_comments(self) -> None:
+        source = """
+# Explain the assignment.
+value = 1  # Keep this value stable.
+"""
+        settings = Settings(select=("LEG034",))
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034", "LEG034"])
+
+    def test_unmatched_comments_accepts_configured_comment_blocks(self) -> None:
+        source = """
+# HUMAN: The provider requires ordered retries.
+# Reordering these calls breaks failover.
+retry()  # Keep this aligned with the worker timeout. @owned
+# Retry behavior is tracked in ENG-482.
+"""
+        settings = Settings(
+            select=("LEG034",),
+            comment_matchers=(r"\bENG-\d+\b",),
+            comment_prefix_identifiers=("HUMAN",),
+            comment_suffix_identifiers=("@owned",),
+        )
+
+        self.assertEqual(codes(source, settings=settings), [])
+
+    def test_unmatched_comments_requires_identifier_boundaries(self) -> None:
+        source = """
+# HUMANIZED: This is not owned.
+value = 1  # Preserve this not@owned
+"""
+        settings = Settings(
+            select=("LEG034",),
+            comment_prefix_identifiers=("HUMAN",),
+            comment_suffix_identifiers=("@owned",),
+        )
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034", "LEG034"])
+
+    def test_unmatched_comments_ignores_python_metadata_and_docstrings(self) -> None:
+        source = '''#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Module documentation."""
+
+def f():
+    """Function documentation."""
+'''
+        settings = Settings(select=("LEG034",))
+
+        self.assertEqual(codes(source, settings=settings), [])
+
+    def test_unmatched_comments_checks_misplaced_encoding_comments(self) -> None:
+        source = "value = 1\n# coding: utf-8\n"
+        settings = Settings(select=("LEG034",))
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034"])
+
+    def test_unmatched_comments_ignores_invalid_matcher_patterns(self) -> None:
+        source = "# Explain the assignment.\nvalue = 1\n"
+        settings = Settings(select=("LEG034",), comment_matchers=("[",))
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034"])
+
+    def test_unmatched_comments_supports_noqa(self) -> None:
+        source = "value = 1  # Temporary compatibility path.  # noqa: LEG034\n"
+        settings = Settings(select=("LEG034",))
+
+        self.assertEqual(codes(source, settings=settings), [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -97,6 +97,9 @@ max-control-flow-depth = 3
 max-array-chain-depth = 2
 min-object-lookup-chain-length = 3
 min-dirname-match-depth = 3
+comment-matchers = []
+comment-prefix-identifiers = []
+comment-suffix-identifiers = []
 
 [tool.ruff-legibility.per-file-ignores]
 "tests/*" = ["LEG003"]
@@ -152,6 +155,7 @@ Each rule has an inline dos / don'ts diff example in [Examples](#examples).
 | [`LEG031`](#leg031-no-deep-subscript-chain) | Avoid deep subscript chains without named intermediate values. | on |
 | [`LEG032`](#leg032-prefer-named-exception-context) | Prefer named context when wrapping or logging broad exceptions. | on |
 | [`LEG033`](#leg033-no-boolean-parameter-name-drift) | Avoid positive boolean names assigned from inverted expressions. | on |
+| [`LEG034`](#leg034-no-unmatched-comments) | Reject comments without an allowed matcher or boundary identifier. | on |
 
 ## Examples
 
@@ -585,6 +589,41 @@ Removed lines are don'ts. Added lines are dos.
 ```diff
 - is_ready = status != "ready"
 + is_ready = status == "ready"
+```
+
+---
+
+### `LEG034 no-unmatched-comments`
+
+Reject inline comments and contiguous, equally indented comment blocks unless
+they match a configured regular expression, prefix identifier, or suffix
+identifier. With no options, the rule rejects every ordinary `#` comment.
+
+Python docstrings are not comments and are left unchanged. Executable shebangs
+and valid PEP 263 encoding declarations are also ignored.
+
+```toml
+[tool.ruff-legibility]
+comment-matchers = [
+  '\b(ENG|OPS)-\d+\b',
+  '^\s*(noqa\b|type:\s*|ruff:\s*noqa\b)',
+  '^\s*(fmt|isort):\s*(on|off|skip)\b',
+  '^\s*pragma:\s*no cover\b',
+]
+comment-prefix-identifiers = ["HUMAN", "LEGAL", "SECURITY"]
+comment-suffix-identifiers = ["@owned"]
+```
+
+Matchers are case-insensitive regular-expression sources applied to the comment
+body without its leading `#`. Invalid patterns are ignored. Prefix and suffix
+identifiers are literal, case-insensitive, and require a Python identifier
+boundary. Empty or whitespace-only identifiers never match.
+
+```diff
+- # Loop over each retry.
++ # HUMAN: The provider requires retries to remain ordered.
+  for retry in retries:
+      send(retry)
 ```
 
 ## Pre-commit

@@ -4,6 +4,11 @@ All notable user-facing changes to `ruff-legibility` should be recorded here.
 
 ## Unreleased
 
+- Add `LEG034 no-unmatched-comments` with configurable comment matchers and
+  ownership identifiers, Python comment-block handling, and metadata exclusions.
+- Document comment ownership in the packaged agent skill.
+- Fix native `LEG005` parity for membership conditions and nested comprehensions.
+
 ## 0.3.1
 
 - Build Python 3.11+ `abi3` manylinux release wheels so installs do not fall
