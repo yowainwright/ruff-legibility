@@ -155,7 +155,7 @@ Each rule has an inline dos / don'ts diff example in [Examples](#examples).
 | [`LEG031`](#leg031-no-deep-subscript-chain) | Avoid deep subscript chains without named intermediate values. | on |
 | [`LEG032`](#leg032-prefer-named-exception-context) | Prefer named context when wrapping or logging broad exceptions. | on |
 | [`LEG033`](#leg033-no-boolean-parameter-name-drift) | Avoid positive boolean names assigned from inverted expressions. | on |
-| [`LEG034`](#leg034-no-unmatched-comments) | Reject comments without an allowed matcher or boundary identifier. | on |
+| [`LEG034`](#leg034-no-unmatched-comments) | Reject unmatched comments and unowned comment stacking within functions. | on |
 
 ## Examples
 
@@ -598,6 +598,14 @@ Removed lines are don'ts. Added lines are dos.
 Reject inline comments and contiguous, equally indented comment blocks unless
 they match a configured regular expression, prefix identifier, or suffix
 identifier. With no options, the rule rejects every ordinary `#` comment.
+Each unmatched physical comment reports separately, whether it is a standalone
+line or trails Python code inline.
+
+A function may contain one matcher-allowed physical `#` comment without an
+ownership identifier. Additional comments report `LEG034`, including stacked
+lines and equally indented comment blocks immediately above or below the
+function. Prefix- or suffix-owned blocks are exempt, and nested functions keep
+separate counts.
 
 Python docstrings are not comments and are left unchanged. Executable shebangs
 and valid PEP 263 encoding declarations are also ignored.
@@ -626,7 +634,59 @@ boundary. Empty or whitespace-only identifiers never match.
       send(retry)
 ```
 
-## Pre-commit
+## Recipes
+
+Use one committed `ruff-legibility` configuration in every context. Change the
+scope and failure behavior, not the rules each context sees. Local feedback then
+stays representative of CI without interrupting every stage of development.
+
+| Context | Scope | Enforcement |
+| --- | --- | --- |
+| Agent edit loop | Python files the agent touched | Blocking |
+| Human exploration | Current file or working area | Advisory with `--exit-zero` |
+| Pre-commit | Staged Python files | Blocking |
+| CI | Entire repository | Blocking and annotated |
+
+### Agents
+
+Install the packaged skill once, then ask the agent to run Ruff and
+`ruff-legibility` on the Python files it changed:
+
+```sh
+ruff-legibility install-skill --target auto
+ruff check src/package/changed.py
+ruff-legibility check src/package/changed.py
+```
+
+`ruff-legibility` is file-based, not diff-aware. Scoping the edit loop to
+touched files keeps unrelated legacy diagnostics out of the agent's path while
+CI still checks the repository-wide policy.
+
+Agents should fix diagnostics introduced by their edit. They must not add
+comment matchers, ownership identifiers, or `# noqa` suppressions to make their
+own code pass. An agent-added unmatched comment should be removed. Existing
+diagnostics outside the task should be reported rather than suppressed or
+rewritten. Ownership-marked comments should remain unchanged unless the task
+explicitly includes comment cleanup.
+
+### Humans
+
+Use advisory mode while exploring a change:
+
+```sh
+ruff-legibility check src/package --exit-zero
+```
+
+Before committing, run the same command without `--exit-zero` on the files being
+committed. Humans can use configured prefix or suffix identifiers for context
+that is intentionally retained. Keep regular-expression matchers narrow and
+reserve them for project conventions such as type-checker, formatter, coverage,
+or ticket directives. Reserve `# noqa: LEG###` for an isolated false positive.
+
+### Pre-commit
+
+The pre-commit framework appends staged Python filenames to this command, so the
+blocking check remains narrow:
 
 ```yaml
 repos:
@@ -638,6 +698,27 @@ repos:
         language: system
         types: [python]
 ```
+
+### CI
+
+Run Ruff first, then run `ruff-legibility` across the repository. GitHub output
+adds annotations, while the nonzero exit status still fails the required check:
+
+```yaml
+- run: uv sync --locked --all-groups
+- run: uv run ruff check .
+- run: uv run ruff-legibility check . --output-format github
+```
+
+Do not use `--exit-zero` in a required CI check. Keep CI on the same committed
+configuration used locally so a passing local run predicts a passing build.
+
+### Gradual adoption
+
+1. Run `ruff-legibility check . --exit-zero` to inventory the existing baseline.
+2. Tune thresholds, exclusions, per-file ignores, and comment matchers narrowly.
+3. Fix the remaining baseline diagnostics.
+4. Remove `--exit-zero` and make the repository-wide CI check required.
 
 ## Development
 

@@ -29,7 +29,10 @@ This is the single shared skill for Claude and Codex.
 Use `LEG034 no-unmatched-comments` as a human-ownership gate when a project
 configures comment matchers or boundary identifiers.
 
-- Agents must not add source comments, matcher text, or prefix/suffix identifiers.
+- Agents must not add standalone or trailing inline source comments, matcher
+  text, or prefix/suffix identifiers.
+- Never stack matcher-allowed comments within a function. `LEG034` permits one
+  unowned physical comment per function and exempts prefix- or suffix-owned blocks.
 - Treat matching comments as human-owned. Do not remove or rewrite them unless
   the user explicitly requests it.
 - Remove an unmatched comment introduced by the agent instead of granting it a

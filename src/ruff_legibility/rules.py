@@ -6,7 +6,7 @@ import io
 import re
 import shlex
 import tokenize
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from itertools import groupby
 from operator import itemgetter
@@ -38,6 +38,7 @@ class SourceComment:
     value: str
     first_token: tokenize.TokenInfo
     last_token: tokenize.TokenInfo
+    tokens: tuple[tokenize.TokenInfo, ...]
 
 
 RULES = {
@@ -209,7 +210,7 @@ RULES = {
     "LEG034": Rule(
         "LEG034",
         "no-unmatched-comments",
-        "Reject comments without an allowed matcher or boundary identifier.",
+        "Reject unmatched comments and unowned comment stacking within functions.",
     ),
 }
 
@@ -299,6 +300,10 @@ EXCEPTION_LOG_CONTEXT_MESSAGE = "Log a named context message instead of logging 
 EXCEPTION_WRAP_CONTEXT_MESSAGE = "Add named context when wrapping a broad exception."
 HIDDEN_ASSIGNMENT_MESSAGE = "Avoid assignment expressions hidden inside expressions. Assign the value first."
 UNMATCHED_COMMENT_MESSAGE = "Comment does not match an allowed matcher or boundary identifier."
+STACKED_COMMENT_MESSAGE = (
+    "Function has more than one comment without an ownership identifier. "
+    "Keep one comment or use a configured prefix or suffix identifier."
+)
 IDENTITY_COMPREHENSION_MESSAGE = "Avoid a comprehension that returns each item unchanged."
 INVERTED_COMPARE_OPERATORS = (ast.IsNot, ast.NotEq, ast.NotIn)
 LOG_METHODS = frozenset({"critical", "debug", "error", "exception", "info", "warning"})
@@ -308,6 +313,8 @@ NESTED_COMPREHENSION_MESSAGE = (
 
 
 AliasScope = dict[str, AliasCandidate]
+FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
+CommentTokensByFunction = dict[FunctionNode, tuple[tokenize.TokenInfo, ...]]
 
 
 class LegibilityVisitor(ast.NodeVisitor):
@@ -325,7 +332,7 @@ class LegibilityVisitor(ast.NodeVisitor):
 
     def visit_Module(self, node: ast.Module) -> None:
         self._check_module_path_rules(node)
-        self._check_comments()
+        self._check_comments(node)
         self._enter_alias_scope()
         self._visit_many(node.body)
         self._leave_alias_scope()
@@ -1128,18 +1135,36 @@ class LegibilityVisitor(ast.NodeVisitor):
         message = f"`{key}` is filtered multiple times in this scope. Build a named filtered collection."
         self._add(node, "LEG030", message)
 
-    def _check_comments(self) -> None:
+    def _check_comments(self, node: ast.Module) -> None:
         if not self.settings.enabled("LEG034"):
             return
 
         matchers = _compile_comment_matchers(self.settings.comment_matchers)
+        allowed_comments: tuple[SourceComment, ...] = ()
         for comment in _source_comments(self.source):
             is_allowed = _is_allowed_comment(comment.value, matchers, self.settings)
             if is_allowed:
+                allowed_comments = allowed_comments + (comment,)
                 continue
-            self._add_comment(comment)
+            self._add_unmatched_comments(comment)
+        self._check_stacked_comments(node, allowed_comments)
 
-    def _add_comment(self, comment: SourceComment) -> None:
+    def _add_unmatched_comments(self, comment: SourceComment) -> None:
+        for token in comment.tokens:
+            unmatched_comment = _source_comment((token,))
+            self._add_comment(unmatched_comment)
+
+    def _check_stacked_comments(
+        self,
+        node: ast.Module,
+        comments: tuple[SourceComment, ...],
+    ) -> None:
+        stacked_tokens = _stacked_function_comment_tokens(node, comments, self.settings)
+        for token in stacked_tokens:
+            stacked_comment = _source_comment((token,))
+            self._add_comment(stacked_comment, STACKED_COMMENT_MESSAGE)
+
+    def _add_comment(self, comment: SourceComment, message: str = UNMATCHED_COMMENT_MESSAGE) -> None:
         from .core import Diagnostic
 
         line, column = comment.first_token.start
@@ -1151,7 +1176,7 @@ class LegibilityVisitor(ast.NodeVisitor):
             end_line=end_line,
             end_column=end_column + 1,
             code="LEG034",
-            message=UNMATCHED_COMMENT_MESSAGE,
+            message=message,
         )
         self.diagnostics = self.diagnostics + [diagnostic]
 
@@ -1267,8 +1292,128 @@ def _source_comment(tokens: tuple[tokenize.TokenInfo, ...]) -> SourceComment:
     value = "\n".join(comment_lines)
     first_token = tokens[0]
     last_token = tokens[-1]
-    comment = SourceComment(value=value, first_token=first_token, last_token=last_token)
+    comment = SourceComment(
+        value=value,
+        first_token=first_token,
+        last_token=last_token,
+        tokens=tokens,
+    )
     return comment
+
+
+def _stacked_function_comment_tokens(
+    node: ast.Module,
+    comments: tuple[SourceComment, ...],
+    settings: Settings,
+) -> tuple[tokenize.TokenInfo, ...]:
+    functions = _function_nodes(node)
+    comments_by_function: CommentTokensByFunction = {}
+    for comment in comments:
+        _count_function_comment(comment, functions, comments_by_function, settings)
+
+    stacked_tokens = (
+        token
+        for tokens in comments_by_function.values()
+        for token in tokens[1:]
+    )
+    return tuple(stacked_tokens)
+
+
+def _count_function_comment(
+    comment: SourceComment,
+    functions: tuple[FunctionNode, ...],
+    comments_by_function: CommentTokensByFunction,
+    settings: Settings,
+) -> None:
+    if _matches_comment_identifier(comment.value, settings):
+        return
+    function = _function_for_comment(comment, functions)
+    if function is None:
+        return
+    function_comments = comments_by_function.get(function, ())
+    updated_comments = function_comments + comment.tokens
+    comments_by_function[function] = updated_comments
+
+
+def _function_nodes(node: ast.Module) -> tuple[FunctionNode, ...]:
+    function_types = (ast.FunctionDef, ast.AsyncFunctionDef)
+    functions = [
+        candidate
+        for candidate in ast.walk(node)
+        if isinstance(candidate, function_types)
+    ]
+    return tuple(functions)
+
+
+def _function_for_comment(
+    comment: SourceComment,
+    functions: tuple[FunctionNode, ...],
+) -> FunctionNode | None:
+    leading = _nearest_associated_function(comment, functions, _leads_function)
+    if leading is not None:
+        return leading
+    containing = _nearest_associated_function(comment, functions, _is_inside_function)
+    if containing is not None:
+        return containing
+    return _nearest_associated_function(comment, functions, _trails_function)
+
+
+def _nearest_associated_function(
+    comment: SourceComment,
+    functions: tuple[FunctionNode, ...],
+    association: Callable[[SourceComment, FunctionNode], bool],
+) -> FunctionNode | None:
+    candidates = (
+        function
+        for function in functions
+        if association(comment, function)
+    )
+    return min(candidates, key=_function_line_span, default=None)
+
+
+def _leads_function(comment: SourceComment, node: FunctionNode) -> bool:
+    comment_line, _ = comment.last_token.end
+    _, comment_column = comment.first_token.start
+    is_adjacent = comment_line + 1 == _function_start_line(node)
+    has_same_indent = comment_column == node.col_offset
+    is_standalone = _is_standalone_comment(comment.first_token)
+    is_leading = is_standalone and is_adjacent
+    return is_leading and has_same_indent
+
+
+def _is_inside_function(comment: SourceComment, node: FunctionNode) -> bool:
+    first_line, _ = comment.first_token.start
+    last_line, _ = comment.last_token.end
+    start_line = _function_start_line(node)
+    end_line = node.end_lineno or node.lineno
+    starts_inside = start_line <= first_line
+    ends_inside = last_line <= end_line
+    return starts_inside and ends_inside
+
+
+def _trails_function(comment: SourceComment, node: FunctionNode) -> bool:
+    comment_line, comment_column = comment.first_token.start
+    end_line = node.end_lineno or node.lineno
+    is_adjacent = comment_line == end_line + 1
+    has_same_indent = comment_column == node.col_offset
+    is_standalone = _is_standalone_comment(comment.first_token)
+    is_trailing = is_standalone and is_adjacent
+    return is_trailing and has_same_indent
+
+
+def _function_start_line(node: FunctionNode) -> int:
+    decorator_lines = tuple(
+        decorator.lineno
+        for decorator in node.decorator_list
+    )
+    all_start_lines = (node.lineno,) + decorator_lines
+    return min(all_start_lines)
+
+
+def _function_line_span(node: FunctionNode) -> int:
+    end_line = node.end_lineno or node.lineno
+    start_line = _function_start_line(node)
+    return end_line - start_line
 
 
 def _compile_comment_matchers(sources: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
@@ -1294,11 +1439,21 @@ def _is_allowed_comment(
     if matches_pattern:
         return True
 
+    return _matches_comment_identifier(value, settings)
+
+
+def _matches_comment_identifier(value: str, settings: Settings) -> bool:
     normalized_value = value.strip().casefold()
-    matches_prefix = _matches_prefix_identifier(normalized_value, settings.comment_prefix_identifiers)
+    matches_prefix = _matches_prefix_identifier(
+        normalized_value,
+        settings.comment_prefix_identifiers,
+    )
     if matches_prefix:
         return True
-    matches_suffix = _matches_suffix_identifier(normalized_value, settings.comment_suffix_identifiers)
+    matches_suffix = _matches_suffix_identifier(
+        normalized_value,
+        settings.comment_suffix_identifiers,
+    )
     return matches_suffix
 
 

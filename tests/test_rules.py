@@ -268,6 +268,17 @@ value = 1  # Keep this value stable.
 
         self.assertEqual(codes(source, settings=settings), ["LEG034", "LEG034"])
 
+    def test_unmatched_comments_reports_every_physical_comment(self) -> None:
+        source = """
+# Explain the first assignment.
+# Explain the second assignment.
+first = 1  # Keep the first value stable.
+second = 2  # Keep the second value stable.
+"""
+        settings = Settings(select=("LEG034",))
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034"] * 4)
+
     def test_unmatched_comments_accepts_configured_comment_blocks(self) -> None:
         source = """
 # HUMAN: The provider requires ordered retries.
@@ -283,6 +294,111 @@ retry()  # Keep this aligned with the worker timeout. @owned
         )
 
         self.assertEqual(codes(source, settings=settings), [])
+
+    def test_unmatched_comments_reports_stacked_function_comments(self) -> None:
+        source = """
+def load_value():
+    value = load()  # ENG-481: Load the configured value.
+    # ENG-482: Preserve the configured fallback.
+    return value or fallback()
+"""
+        settings = Settings(select=("LEG034",), comment_matchers=(r"\bENG-\d+\b",))
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034"])
+
+    def test_unmatched_comments_checks_stacks_above_and_below_functions(self) -> None:
+        source = """
+# ENG-481: First leading comment.
+# ENG-482: Second leading comment.
+def first():
+    return 1
+
+def second():
+    return 2
+# ENG-483: First trailing comment.
+# ENG-484: Second trailing comment.
+"""
+        settings = Settings(select=("LEG034",), comment_matchers=(r"\bENG-\d+\b",))
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034", "LEG034"])
+
+    def test_unmatched_comments_allows_one_comment_per_function(self) -> None:
+        source = """
+def first():
+    # ENG-481: Preserve the first contract.
+    return 1
+
+def second():
+    # ENG-482: Preserve the second contract.
+    return 2
+"""
+        settings = Settings(select=("LEG034",), comment_matchers=(r"\bENG-\d+\b",))
+
+        self.assertEqual(codes(source, settings=settings), [])
+
+    def test_unmatched_comments_counts_nested_functions_separately(self) -> None:
+        source = """
+def outer():
+    # ENG-481: Preserve the outer contract.
+    value = load()
+
+    def inner():
+        # ENG-482: Preserve the inner contract.
+        return value
+
+    return inner()
+"""
+        settings = Settings(select=("LEG034",), comment_matchers=(r"\bENG-\d+\b",))
+
+        self.assertEqual(codes(source, settings=settings), [])
+
+    def test_comment_between_functions_belongs_to_following_function(self) -> None:
+        source = """
+def first():
+    # ENG-481: Preserve the first contract.
+    return 1
+# ENG-482: Preserve the second contract.
+def second():
+    return 2
+"""
+        settings = Settings(select=("LEG034",), comment_matchers=(r"\bENG-\d+\b",))
+
+        self.assertEqual(codes(source, settings=settings), [])
+
+    def test_unmatched_comments_exempts_owned_blocks_from_function_limit(self) -> None:
+        source = """
+def load_value():
+    # HUMAN: The provider requires ordered retries.
+    # Reordering these calls breaks failover.
+    retry()
+    # Preserve the timeout selected by the operator.
+    # The worker reads the same value. @owned
+    return timeout
+"""
+        settings = Settings(
+            select=("LEG034",),
+            comment_prefix_identifiers=("HUMAN",),
+            comment_suffix_identifiers=("@owned",),
+        )
+
+        self.assertEqual(codes(source, settings=settings), [])
+
+    def test_owned_comment_does_not_exempt_an_unowned_stack(self) -> None:
+        source = """
+def load_value():
+    # HUMAN: The provider requires ordered retries.
+    retry()
+    # ENG-481: Load the configured value.
+    # ENG-482: Preserve the configured fallback.
+    return load() or fallback()
+"""
+        settings = Settings(
+            select=("LEG034",),
+            comment_matchers=(r"\bENG-\d+\b",),
+            comment_prefix_identifiers=("HUMAN",),
+        )
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034"])
 
     def test_unmatched_comments_requires_identifier_boundaries(self) -> None:
         source = """
