@@ -413,6 +413,24 @@ value = 1  # Preserve this not@owned
 
         self.assertEqual(codes(source, settings=settings), ["LEG034", "LEG034"])
 
+    def test_unmatched_comments_checks_later_overlapping_prefixes(self) -> None:
+        source = "# HUMANIZED: Preserve this behavior.\n"
+        settings = Settings(
+            select=("LEG034",),
+            comment_prefix_identifiers=("HUMAN", "HUMANIZED"),
+        )
+
+        self.assertEqual(codes(source, settings=settings), [])
+
+    def test_unmatched_comments_checks_later_overlapping_suffixes(self) -> None:
+        source = "value = 1  # Preserve myresult owned\n"
+        settings = Settings(
+            select=("LEG034",),
+            comment_suffix_identifiers=("result owned", "owned"),
+        )
+
+        self.assertEqual(codes(source, settings=settings), [])
+
     def test_unmatched_comments_ignores_python_metadata_and_docstrings(self) -> None:
         source = '''#!/usr/bin/env python3
 # -*- coding: utf-8 -*-

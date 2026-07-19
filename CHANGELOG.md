@@ -10,6 +10,7 @@ All notable user-facing changes to `ruff-legibility` should be recorded here.
   handling, and metadata exclusions.
 - Document comment ownership in the packaged agent skill.
 - Add agent, human, pre-commit, CI, and gradual-adoption recipes.
+- Check every configured comment ownership identifier when candidates overlap.
 - Fix native `LEG005` parity for membership conditions and nested comprehensions.
 
 ## 0.3.1

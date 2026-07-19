@@ -1465,7 +1465,9 @@ def _matches_prefix_identifier(value: str, identifiers: tuple[str, ...]) -> bool
         if not has_identifier or not has_prefix:
             continue
         identifier_end = len(normalized_identifier)
-        return _is_identifier_boundary(value, identifier_end)
+        is_boundary = _is_identifier_boundary(value, identifier_end)
+        if is_boundary:
+            return True
     return False
 
 
@@ -1478,7 +1480,9 @@ def _matches_suffix_identifier(value: str, identifiers: tuple[str, ...]) -> bool
             continue
         identifier_start = len(value) - len(normalized_identifier)
         boundary_index = identifier_start - 1
-        return _is_identifier_boundary(value, boundary_index)
+        is_boundary = _is_identifier_boundary(value, boundary_index)
+        if is_boundary:
+            return True
     return False
 
 
