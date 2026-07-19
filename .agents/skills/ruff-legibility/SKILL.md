@@ -24,6 +24,22 @@ This is the single shared skill for Claude and Codex.
 - Keep tool-specific rule files as small pointers. Do not fork this workflow
   into separate Claude and Codex copies.
 
+## Comment Ownership
+
+Use `LEG034 no-unmatched-comments` as a human-ownership gate when a project
+configures comment matchers or boundary identifiers.
+
+- Agents must not add standalone or trailing inline source comments, matcher
+  text, or prefix/suffix identifiers.
+- Never stack matcher-allowed comments within a function. `LEG034` permits one
+  unowned physical comment per function and exempts prefix- or suffix-owned blocks.
+- Treat matching comments as human-owned. Do not remove or rewrite them unless
+  the user explicitly requests it.
+- Remove an unmatched comment introduced by the agent instead of granting it a
+  marker.
+- Preserve pre-existing unmatched comments unless the task explicitly includes
+  comment cleanup.
+
 ## Package Install
 
 The `ruff-legibility` package ships this skill, but does not install it

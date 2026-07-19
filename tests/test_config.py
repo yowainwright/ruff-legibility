@@ -59,6 +59,24 @@ max-expression-operators = 7
         self.assertEqual(settings.min_object_lookup_chain_length, 5)
         self.assertEqual(settings.min_dirname_match_depth, 6)
 
+    def test_loads_comment_policy_options_from_config(self) -> None:
+        settings = apply_config(
+            Settings(),
+            {
+                "comment-matchers": [r"\bENG-\d+\b"],
+                "comment-prefix-identifiers": ["HUMAN", "LEGAL"],
+                "comment-suffix-identifiers": ["@owned"],
+            },
+        )
+
+        self.assertEqual(settings.comment_matchers, (r"\bENG-\d+\b",))
+        self.assertEqual(settings.comment_prefix_identifiers, ("HUMAN", "LEGAL"))
+        self.assertEqual(settings.comment_suffix_identifiers, ("@owned",))
+
+    def test_comment_policy_options_require_string_lists(self) -> None:
+        with self.assertRaisesRegex(ValueError, "comment-matchers must be a list of strings"):
+            apply_config(Settings(), {"comment-matchers": "HUMAN"})
+
     def test_cli_overrides_new_integer_options(self) -> None:
         settings = apply_overrides(
             Settings(),

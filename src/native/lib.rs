@@ -37,6 +37,10 @@ const BOOLEAN_PREFIXES: &[&str] = &[
 ];
 
 const NEGATIVE_PREFIXES: &[&str] = &["not_", "no_", "without_"];
+const COMPREHENSION_LOOP_MESSAGE: &str =
+    "Comprehension inside a loop can become O(n^2). Use a precomputed lookup or extract the loop.";
+const NESTED_COMPREHENSION_MESSAGE: &str =
+    "Nested comprehension detected. Consider restructuring around a set, dict, or named loop.";
 
 #[derive(Deserialize)]
 struct Settings {
@@ -129,6 +133,7 @@ struct Visitor {
     diagnostics: Vec<Diagnostic>,
     control_depth: usize,
     loop_depth: usize,
+    comprehension_depth: usize,
 }
 
 impl Visitor {
@@ -141,6 +146,7 @@ impl Visitor {
             diagnostics: Vec::new(),
             control_depth: 0,
             loop_depth: 0,
+            comprehension_depth: 0,
         }
     }
 
@@ -217,17 +223,20 @@ impl Visitor {
 
     fn visit_while(&mut self, node: &Stmt, test: &Expr, body: &[Stmt], orelse: &[Stmt]) {
         self.check_condition(test);
+        self.visit_expr(test);
         self.visit_loop(node, body, orelse);
     }
 
     fn visit_if(&mut self, node: &ruff_python_ast::StmtIf) {
         self.check_condition(&node.test);
         self.check_early_return(node);
+        self.visit_expr(&node.test);
         self.enter_control(node);
         self.visit_body(&node.body);
         for clause in &node.elif_else_clauses {
             if let Some(test) = &clause.test {
                 self.check_condition(test);
+                self.visit_expr(test);
             }
             self.visit_body(&clause.body);
         }
@@ -301,9 +310,9 @@ impl Visitor {
             Expr::Tuple(tuple) => self.visit_many_exprs(&tuple.elts),
             Expr::Set(set) => self.visit_many_exprs(&set.elts),
             Expr::Dict(dict) => self.visit_dict(dict),
-            Expr::ListComp(comp) => self.visit_comprehension(&comp.elt, &comp.generators),
-            Expr::SetComp(comp) => self.visit_comprehension(&comp.elt, &comp.generators),
-            Expr::Generator(comp) => self.visit_comprehension(&comp.elt, &comp.generators),
+            Expr::ListComp(comp) => self.visit_comprehension(comp, &comp.elt, &comp.generators),
+            Expr::SetComp(comp) => self.visit_comprehension(comp, &comp.elt, &comp.generators),
+            Expr::Generator(comp) => self.visit_comprehension(comp, &comp.elt, &comp.generators),
             Expr::DictComp(comp) => self.visit_dict_comprehension(comp),
             Expr::Await(await_expr) => self.visit_expr(&await_expr.value),
             Expr::Yield(yield_expr) => self.visit_optional_expr(yield_expr.value.as_deref()),
@@ -368,7 +377,22 @@ impl Visitor {
         }
     }
 
-    fn visit_comprehension(&mut self, element: &Expr, generators: &[ruff_python_ast::Comprehension]) {
+    fn visit_comprehension(
+        &mut self,
+        node: &impl Ranged,
+        element: &Expr,
+        generators: &[ruff_python_ast::Comprehension],
+    ) {
+        self.enter_comprehension(node);
+        self.visit_comprehension_parts(element, generators);
+        self.leave_comprehension();
+    }
+
+    fn visit_comprehension_parts(
+        &mut self,
+        element: &Expr,
+        generators: &[ruff_python_ast::Comprehension],
+    ) {
         self.visit_expr(element);
         for generator in generators {
             self.visit_expr(&generator.target);
@@ -378,10 +402,12 @@ impl Visitor {
     }
 
     fn visit_dict_comprehension(&mut self, comp: &ruff_python_ast::ExprDictComp) {
+        self.enter_comprehension(comp);
         if let Some(key) = &comp.key {
             self.visit_expr(key);
         }
-        self.visit_comprehension(&comp.value, &comp.generators);
+        self.visit_comprehension_parts(&comp.value, &comp.generators);
+        self.leave_comprehension();
     }
 
     fn visit_slice(&mut self, slice: &ruff_python_ast::ExprSlice) {
@@ -562,6 +588,28 @@ impl Visitor {
             return;
         }
         self.add(node, "LEG005", "Nested loop detected. Consider restructuring around a set, dict, or precomputed lookup.");
+    }
+
+    fn enter_comprehension(&mut self, node: &impl Ranged) {
+        self.check_comprehension_loop(node);
+        self.comprehension_depth += 1;
+    }
+
+    fn leave_comprehension(&mut self) {
+        self.comprehension_depth -= 1;
+    }
+
+    fn check_comprehension_loop(&mut self, node: &impl Ranged) {
+        if self.settings.enabled("LEG005") == false {
+            return;
+        }
+        if self.comprehension_depth > 0 {
+            self.add(node, "LEG005", NESTED_COMPREHENSION_MESSAGE);
+            return;
+        }
+        if self.loop_depth > 0 {
+            self.add(node, "LEG005", COMPREHENSION_LOOP_MESSAGE);
+        }
     }
 
     fn enter_control(&mut self, node: &impl Ranged) {

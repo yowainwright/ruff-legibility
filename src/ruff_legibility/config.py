@@ -9,6 +9,9 @@ from typing import Any
 from .rules import (
     DEFAULT_ALLOWED_FILENAME_QUALIFIERS,
     DEFAULT_ALLOWED_STANDALONE_FILENAMES,
+    DEFAULT_COMMENT_MATCHERS,
+    DEFAULT_COMMENT_PREFIX_IDENTIFIERS,
+    DEFAULT_COMMENT_SUFFIX_IDENTIFIERS,
     DEFAULT_DIRECT_BIN_ENTRY_PATTERNS,
     DEFAULT_EXECUTABLE_ENTRY_PATTERNS,
     DEFAULT_EXECUTABLE_RUNTIMES,
@@ -61,6 +64,12 @@ INT_OVERRIDE_FIELDS = (
     "min_dirname_match_depth",
 )
 
+STRING_TUPLE_CONFIG_OPTIONS = {
+    "comment-matchers": "comment_matchers",
+    "comment-prefix-identifiers": "comment_prefix_identifiers",
+    "comment-suffix-identifiers": "comment_suffix_identifiers",
+}
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -81,6 +90,9 @@ class Settings:
     executable_entry_patterns: tuple[str, ...] = DEFAULT_EXECUTABLE_ENTRY_PATTERNS
     executable_runtimes: tuple[str, ...] = DEFAULT_EXECUTABLE_RUNTIMES
     direct_bin_entry_patterns: tuple[str, ...] = DEFAULT_DIRECT_BIN_ENTRY_PATTERNS
+    comment_matchers: tuple[str, ...] = DEFAULT_COMMENT_MATCHERS
+    comment_prefix_identifiers: tuple[str, ...] = DEFAULT_COMMENT_PREFIX_IDENTIFIERS
+    comment_suffix_identifiers: tuple[str, ...] = DEFAULT_COMMENT_SUFFIX_IDENTIFIERS
 
     def enabled(self, code: str) -> bool:
         is_selected = selector_matches(code, self.select)
@@ -222,6 +234,13 @@ def apply_config(settings: Settings, table: dict[str, Any]) -> Settings:
         if not isinstance(value, int):
             raise ValueError(f"{option_name} must be an integer")
         updates[field_name] = value
+
+    for option_name, field_name in STRING_TUPLE_CONFIG_OPTIONS.items():
+        value = table.get(option_name, missing)
+        if value is missing:
+            continue
+        option_values = _required_string_list(value, option_name)
+        updates[field_name] = tuple(option_values)
 
     validate_selectors(updates.get("select", settings.select))
     validate_selectors(updates.get("ignore", settings.ignore))

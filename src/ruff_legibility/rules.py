@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import ast
 import fnmatch
+import io
 import re
 import shlex
-from collections.abc import Iterable
+import tokenize
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from itertools import groupby
+from operator import itemgetter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,6 +31,14 @@ class AliasCandidate:
     target: str
     node: ast.AST
     references: int = 0
+
+
+@dataclass(frozen=True)
+class SourceComment:
+    value: str
+    first_token: tokenize.TokenInfo
+    last_token: tokenize.TokenInfo
+    tokens: tuple[tokenize.TokenInfo, ...]
 
 
 RULES = {
@@ -195,6 +207,11 @@ RULES = {
         "no-boolean-parameter-name-drift",
         "Avoid positive boolean names assigned from inverted expressions.",
     ),
+    "LEG034": Rule(
+        "LEG034",
+        "no-unmatched-comments",
+        "Reject unmatched comments and unowned comment stacking within functions.",
+    ),
 }
 
 DEFAULT_SELECT = ("LEG",)
@@ -227,6 +244,9 @@ DEFAULT_DIRECT_BIN_ENTRY_PATTERNS = (
 )
 DEFAULT_EXECUTABLE_ENTRY_PATTERNS = ("bin/*.py", "scripts/*.py")
 DEFAULT_EXECUTABLE_RUNTIMES = ("python", "python3")
+DEFAULT_COMMENT_MATCHERS: tuple[str, ...] = ()
+DEFAULT_COMMENT_PREFIX_IDENTIFIERS: tuple[str, ...] = ()
+DEFAULT_COMMENT_SUFFIX_IDENTIFIERS: tuple[str, ...] = ()
 
 CONTROL_FLOW_NODES = (
     ast.AsyncFor,
@@ -244,6 +264,7 @@ NEGATIVE_CONDITION_PATTERN = re.compile(
     r"^(?:is|are|was|were|has|have|had|can|could|should|will|would|did|does)_"
     r"(?:not|no|without)_"
 )
+ENCODING_COMMENT_PATTERN = re.compile(r"^#.*?coding[:=][ \t]*[-_.a-zA-Z0-9]+")
 ARRAY_CHAIN_METHODS = frozenset(
     {
         "exclude",
@@ -278,6 +299,11 @@ COMPREHENSION_LOOP_MESSAGE = (
 EXCEPTION_LOG_CONTEXT_MESSAGE = "Log a named context message instead of logging the broad exception directly."
 EXCEPTION_WRAP_CONTEXT_MESSAGE = "Add named context when wrapping a broad exception."
 HIDDEN_ASSIGNMENT_MESSAGE = "Avoid assignment expressions hidden inside expressions. Assign the value first."
+UNMATCHED_COMMENT_MESSAGE = "Comment does not match an allowed matcher or boundary identifier."
+STACKED_COMMENT_MESSAGE = (
+    "Function has more than one comment without an ownership identifier. "
+    "Keep one comment or use a configured prefix or suffix identifier."
+)
 IDENTITY_COMPREHENSION_MESSAGE = "Avoid a comprehension that returns each item unchanged."
 INVERTED_COMPARE_OPERATORS = (ast.IsNot, ast.NotEq, ast.NotIn)
 LOG_METHODS = frozenset({"critical", "debug", "error", "exception", "info", "warning"})
@@ -287,6 +313,8 @@ NESTED_COMPREHENSION_MESSAGE = (
 
 
 AliasScope = dict[str, AliasCandidate]
+FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
+CommentTokensByFunction = dict[FunctionNode, tuple[tokenize.TokenInfo, ...]]
 
 
 class LegibilityVisitor(ast.NodeVisitor):
@@ -304,6 +332,7 @@ class LegibilityVisitor(ast.NodeVisitor):
 
     def visit_Module(self, node: ast.Module) -> None:
         self._check_module_path_rules(node)
+        self._check_comments(node)
         self._enter_alias_scope()
         self._visit_many(node.body)
         self._leave_alias_scope()
@@ -1106,6 +1135,51 @@ class LegibilityVisitor(ast.NodeVisitor):
         message = f"`{key}` is filtered multiple times in this scope. Build a named filtered collection."
         self._add(node, "LEG030", message)
 
+    def _check_comments(self, node: ast.Module) -> None:
+        if not self.settings.enabled("LEG034"):
+            return
+
+        matchers = _compile_comment_matchers(self.settings.comment_matchers)
+        allowed_comments: tuple[SourceComment, ...] = ()
+        for comment in _source_comments(self.source):
+            is_allowed = _is_allowed_comment(comment.value, matchers, self.settings)
+            if is_allowed:
+                allowed_comments = allowed_comments + (comment,)
+                continue
+            self._add_unmatched_comments(comment)
+        self._check_stacked_comments(node, allowed_comments)
+
+    def _add_unmatched_comments(self, comment: SourceComment) -> None:
+        for token in comment.tokens:
+            unmatched_comment = _source_comment((token,))
+            self._add_comment(unmatched_comment)
+
+    def _check_stacked_comments(
+        self,
+        node: ast.Module,
+        comments: tuple[SourceComment, ...],
+    ) -> None:
+        stacked_tokens = _stacked_function_comment_tokens(node, comments, self.settings)
+        for token in stacked_tokens:
+            stacked_comment = _source_comment((token,))
+            self._add_comment(stacked_comment, STACKED_COMMENT_MESSAGE)
+
+    def _add_comment(self, comment: SourceComment, message: str = UNMATCHED_COMMENT_MESSAGE) -> None:
+        from .core import Diagnostic
+
+        line, column = comment.first_token.start
+        end_line, end_column = comment.last_token.end
+        diagnostic = Diagnostic(
+            path=self.path,
+            line=line,
+            column=column + 1,
+            end_line=end_line,
+            end_column=end_column + 1,
+            code="LEG034",
+            message=message,
+        )
+        self.diagnostics = self.diagnostics + [diagnostic]
+
     def _add(self, node: ast.AST, code: str, message: str) -> None:
         if not self.settings.enabled(code):
             return
@@ -1122,6 +1196,302 @@ class LegibilityVisitor(ast.NodeVisitor):
             message=message,
         )
         self.diagnostics = self.diagnostics + [diagnostic]
+
+
+def _source_comments(source: str) -> tuple[SourceComment, ...]:
+    tokens = _comment_tokens(source)
+    first_line = _first_source_line(source)
+    content_tokens = tuple(token for token in tokens if not _is_metadata_comment(token, first_line))
+    token_groups = _group_comment_tokens(content_tokens)
+    comments = tuple(_source_comment(group) for group in token_groups)
+    return comments
+
+
+def _comment_tokens(source: str) -> tuple[tokenize.TokenInfo, ...]:
+    reader = io.StringIO(source).readline
+    tokens = tokenize.generate_tokens(reader)
+    comments = tuple(token for token in tokens if token.type == tokenize.COMMENT)
+    return comments
+
+
+def _first_source_line(source: str) -> str:
+    lines = source.splitlines()
+    if not lines:
+        return ""
+    return lines[0]
+
+
+def _is_metadata_comment(token: tokenize.TokenInfo, first_line: str) -> bool:
+    line_number, column = token.start
+    is_shebang_line = line_number == 1 and column == 0
+    is_shebang = is_shebang_line and token.string.startswith("#!")
+    encoding_match = ENCODING_COMMENT_PATTERN.match(token.string)
+    has_encoding_marker = bool(encoding_match)
+    first_line_content = first_line.lstrip(" \t\f")
+    allows_second_line_cookie = not first_line_content or first_line_content.startswith("#")
+    is_first_line_cookie = line_number == 1 and has_encoding_marker
+    is_second_line_cookie = line_number == 2 and has_encoding_marker and allows_second_line_cookie
+    is_encoding = is_first_line_cookie or is_second_line_cookie
+    return is_shebang or is_encoding
+
+
+def _group_comment_tokens(
+    tokens: tuple[tokenize.TokenInfo, ...],
+) -> tuple[tuple[tokenize.TokenInfo, ...], ...]:
+    numbered_tokens = _numbered_comment_tokens(tokens)
+    group_key = itemgetter(0)
+    grouped_tokens = groupby(numbered_tokens, key=group_key)
+    groups = tuple(_comment_token_group(group) for _, group in grouped_tokens)
+    return groups
+
+
+def _comment_token_group(
+    group: Iterable[tuple[int, tokenize.TokenInfo]],
+) -> tuple[tokenize.TokenInfo, ...]:
+    tokens = tuple(pair[1] for pair in group)
+    return tokens
+
+
+def _numbered_comment_tokens(
+    tokens: tuple[tokenize.TokenInfo, ...],
+) -> Iterable[tuple[int, tokenize.TokenInfo]]:
+    group_number = 0
+    previous: tokenize.TokenInfo | None = None
+    for token in tokens:
+        if previous is not None:
+            continues_block = _continues_comment_block(previous, token)
+            if not continues_block:
+                group_number += 1
+        yield group_number, token
+        previous = token
+
+
+def _is_standalone_comment(token: tokenize.TokenInfo) -> bool:
+    _, column = token.start
+    line_prefix = token.line[:column]
+    if not line_prefix:
+        return True
+    return line_prefix.isspace()
+
+
+def _continues_comment_block(previous: tokenize.TokenInfo, current: tokenize.TokenInfo) -> bool:
+    previous_standalone = _is_standalone_comment(previous)
+    current_standalone = _is_standalone_comment(current)
+    are_standalone = previous_standalone and current_standalone
+    previous_line, _ = previous.end
+    current_line, current_column = current.start
+    _, previous_column = previous.start
+    are_adjacent = current_line == previous_line + 1
+    have_same_indent = current_column == previous_column
+    continues_block = are_standalone and are_adjacent and have_same_indent
+    return continues_block
+
+
+def _source_comment(tokens: tuple[tokenize.TokenInfo, ...]) -> SourceComment:
+    comment_lines = (token.string.removeprefix("#") for token in tokens)
+    value = "\n".join(comment_lines)
+    first_token = tokens[0]
+    last_token = tokens[-1]
+    comment = SourceComment(
+        value=value,
+        first_token=first_token,
+        last_token=last_token,
+        tokens=tokens,
+    )
+    return comment
+
+
+def _stacked_function_comment_tokens(
+    node: ast.Module,
+    comments: tuple[SourceComment, ...],
+    settings: Settings,
+) -> tuple[tokenize.TokenInfo, ...]:
+    functions = _function_nodes(node)
+    comments_by_function: CommentTokensByFunction = {}
+    for comment in comments:
+        _count_function_comment(comment, functions, comments_by_function, settings)
+
+    stacked_tokens = (
+        token
+        for tokens in comments_by_function.values()
+        for token in tokens[1:]
+    )
+    return tuple(stacked_tokens)
+
+
+def _count_function_comment(
+    comment: SourceComment,
+    functions: tuple[FunctionNode, ...],
+    comments_by_function: CommentTokensByFunction,
+    settings: Settings,
+) -> None:
+    if _matches_comment_identifier(comment.value, settings):
+        return
+    function = _function_for_comment(comment, functions)
+    if function is None:
+        return
+    function_comments = comments_by_function.get(function, ())
+    updated_comments = function_comments + comment.tokens
+    comments_by_function[function] = updated_comments
+
+
+def _function_nodes(node: ast.Module) -> tuple[FunctionNode, ...]:
+    function_types = (ast.FunctionDef, ast.AsyncFunctionDef)
+    functions = [
+        candidate
+        for candidate in ast.walk(node)
+        if isinstance(candidate, function_types)
+    ]
+    return tuple(functions)
+
+
+def _function_for_comment(
+    comment: SourceComment,
+    functions: tuple[FunctionNode, ...],
+) -> FunctionNode | None:
+    leading = _nearest_associated_function(comment, functions, _leads_function)
+    if leading is not None:
+        return leading
+    containing = _nearest_associated_function(comment, functions, _is_inside_function)
+    if containing is not None:
+        return containing
+    return _nearest_associated_function(comment, functions, _trails_function)
+
+
+def _nearest_associated_function(
+    comment: SourceComment,
+    functions: tuple[FunctionNode, ...],
+    association: Callable[[SourceComment, FunctionNode], bool],
+) -> FunctionNode | None:
+    candidates = (
+        function
+        for function in functions
+        if association(comment, function)
+    )
+    return min(candidates, key=_function_line_span, default=None)
+
+
+def _leads_function(comment: SourceComment, node: FunctionNode) -> bool:
+    comment_line, _ = comment.last_token.end
+    _, comment_column = comment.first_token.start
+    is_adjacent = comment_line + 1 == _function_start_line(node)
+    has_same_indent = comment_column == node.col_offset
+    is_standalone = _is_standalone_comment(comment.first_token)
+    is_leading = is_standalone and is_adjacent
+    return is_leading and has_same_indent
+
+
+def _is_inside_function(comment: SourceComment, node: FunctionNode) -> bool:
+    first_line, _ = comment.first_token.start
+    last_line, _ = comment.last_token.end
+    start_line = _function_start_line(node)
+    end_line = node.end_lineno or node.lineno
+    starts_inside = start_line <= first_line
+    ends_inside = last_line <= end_line
+    return starts_inside and ends_inside
+
+
+def _trails_function(comment: SourceComment, node: FunctionNode) -> bool:
+    comment_line, comment_column = comment.first_token.start
+    end_line = node.end_lineno or node.lineno
+    is_adjacent = comment_line == end_line + 1
+    has_same_indent = comment_column == node.col_offset
+    is_standalone = _is_standalone_comment(comment.first_token)
+    is_trailing = is_standalone and is_adjacent
+    return is_trailing and has_same_indent
+
+
+def _function_start_line(node: FunctionNode) -> int:
+    decorator_lines = tuple(
+        decorator.lineno
+        for decorator in node.decorator_list
+    )
+    all_start_lines = (node.lineno,) + decorator_lines
+    return min(all_start_lines)
+
+
+def _function_line_span(node: FunctionNode) -> int:
+    end_line = node.end_lineno or node.lineno
+    start_line = _function_start_line(node)
+    return end_line - start_line
+
+
+def _compile_comment_matchers(sources: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
+    candidates = (_compile_comment_matcher(source) for source in sources)
+    matchers = tuple(candidate for candidate in candidates if candidate is not None)
+    return matchers
+
+
+def _compile_comment_matcher(source: str) -> re.Pattern[str] | None:
+    try:
+        matcher = re.compile(source, re.IGNORECASE)
+    except re.error:
+        return None
+    return matcher
+
+
+def _is_allowed_comment(
+    value: str,
+    matchers: tuple[re.Pattern[str], ...],
+    settings: Settings,
+) -> bool:
+    matches_pattern = any(matcher.search(value) for matcher in matchers)
+    if matches_pattern:
+        return True
+
+    return _matches_comment_identifier(value, settings)
+
+
+def _matches_comment_identifier(value: str, settings: Settings) -> bool:
+    normalized_value = value.strip().casefold()
+    matches_prefix = _matches_prefix_identifier(
+        normalized_value,
+        settings.comment_prefix_identifiers,
+    )
+    if matches_prefix:
+        return True
+    matches_suffix = _matches_suffix_identifier(
+        normalized_value,
+        settings.comment_suffix_identifiers,
+    )
+    return matches_suffix
+
+
+def _matches_prefix_identifier(value: str, identifiers: tuple[str, ...]) -> bool:
+    for identifier in identifiers:
+        normalized_identifier = identifier.strip().casefold()
+        has_identifier = bool(normalized_identifier)
+        has_prefix = value.startswith(normalized_identifier)
+        if not has_identifier or not has_prefix:
+            continue
+        identifier_end = len(normalized_identifier)
+        is_boundary = _is_identifier_boundary(value, identifier_end)
+        if is_boundary:
+            return True
+    return False
+
+
+def _matches_suffix_identifier(value: str, identifiers: tuple[str, ...]) -> bool:
+    for identifier in identifiers:
+        normalized_identifier = identifier.strip().casefold()
+        has_identifier = bool(normalized_identifier)
+        has_suffix = value.endswith(normalized_identifier)
+        if not has_identifier or not has_suffix:
+            continue
+        identifier_start = len(value) - len(normalized_identifier)
+        boundary_index = identifier_start - 1
+        is_boundary = _is_identifier_boundary(value, boundary_index)
+        if is_boundary:
+            return True
+    return False
+
+
+def _is_identifier_boundary(value: str, index: int) -> bool:
+    if index < 0 or index >= len(value):
+        return True
+    character = value[index]
+    is_identifier_character = character == "_" or character.isalnum()
+    return not is_identifier_character
 
 
 def count_condition_operators(node: ast.AST) -> int:
