@@ -6,7 +6,8 @@ import io
 import re
 import shlex
 import tokenize
-from collections.abc import Callable, Iterable
+from bisect import bisect_left
+from collections.abc import Iterable
 from dataclasses import dataclass
 from itertools import groupby
 from operator import itemgetter
@@ -314,7 +315,23 @@ NESTED_COMPREHENSION_MESSAGE = (
 
 AliasScope = dict[str, AliasCandidate]
 FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
+CommentPosition = tuple[int, int]
 CommentTokensByFunction = dict[FunctionNode, tuple[tokenize.TokenInfo, ...]]
+CommentFunctionMap = dict[CommentPosition, FunctionNode]
+
+
+@dataclass(frozen=True)
+class FunctionScope:
+    node: FunctionNode
+    start_line: int
+    end_line: int
+
+
+@dataclass(frozen=True)
+class FunctionCommentIndex:
+    leading: CommentFunctionMap
+    trailing: CommentFunctionMap
+    containing: CommentFunctionMap
 
 
 class LegibilityVisitor(ast.NodeVisitor):
@@ -1159,7 +1176,7 @@ class LegibilityVisitor(ast.NodeVisitor):
         node: ast.Module,
         comments: tuple[SourceComment, ...],
     ) -> None:
-        stacked_tokens = _stacked_function_comment_tokens(node, comments, self.settings)
+        stacked_tokens = _stacked_function_comment_tokens(node, comments, self.settings, self.source)
         for token in stacked_tokens:
             stacked_comment = _source_comment((token,))
             self._add_comment(stacked_comment, STACKED_COMMENT_MESSAGE)
@@ -1208,10 +1225,14 @@ def _source_comments(source: str) -> tuple[SourceComment, ...]:
 
 
 def _comment_tokens(source: str) -> tuple[tokenize.TokenInfo, ...]:
-    reader = io.StringIO(source).readline
-    tokens = tokenize.generate_tokens(reader)
+    tokens = _source_tokens(source)
     comments = tuple(token for token in tokens if token.type == tokenize.COMMENT)
     return comments
+
+
+def _source_tokens(source: str) -> tuple[tokenize.TokenInfo, ...]:
+    reader = io.StringIO(source).readline
+    return tuple(tokenize.generate_tokens(reader))
 
 
 def _first_source_line(source: str) -> str:
@@ -1231,7 +1252,8 @@ def _is_metadata_comment(token: tokenize.TokenInfo, first_line: str) -> bool:
     allows_second_line_cookie = not first_line_content or first_line_content.startswith("#")
     is_first_line_cookie = line_number == 1 and has_encoding_marker
     is_second_line_cookie = line_number == 2 and has_encoding_marker and allows_second_line_cookie
-    is_encoding = is_first_line_cookie or is_second_line_cookie
+    is_comment_only = _is_standalone_comment(token)
+    is_encoding = is_comment_only and (is_first_line_cookie or is_second_line_cookie)
     return is_shebang or is_encoding
 
 
@@ -1305,11 +1327,12 @@ def _stacked_function_comment_tokens(
     node: ast.Module,
     comments: tuple[SourceComment, ...],
     settings: Settings,
+    source: str,
 ) -> tuple[tokenize.TokenInfo, ...]:
-    functions = _function_nodes(node)
+    function_index = _function_comment_index(node, comments, source)
     comments_by_function: CommentTokensByFunction = {}
     for comment in comments:
-        _count_function_comment(comment, functions, comments_by_function, settings)
+        _count_function_comment(comment, function_index, comments_by_function, settings)
 
     stacked_tokens = (
         token
@@ -1321,13 +1344,13 @@ def _stacked_function_comment_tokens(
 
 def _count_function_comment(
     comment: SourceComment,
-    functions: tuple[FunctionNode, ...],
+    function_index: FunctionCommentIndex,
     comments_by_function: CommentTokensByFunction,
     settings: Settings,
 ) -> None:
     if _matches_comment_identifier(comment.value, settings):
         return
-    function = _function_for_comment(comment, functions)
+    function = _function_for_comment(comment, function_index)
     if function is None:
         return
     function_comments = comments_by_function.get(function, ())
@@ -1345,75 +1368,177 @@ def _function_nodes(node: ast.Module) -> tuple[FunctionNode, ...]:
     return tuple(functions)
 
 
+def _function_comment_index(
+    node: ast.Module,
+    comments: tuple[SourceComment, ...],
+    source: str,
+) -> FunctionCommentIndex:
+    functions = _function_nodes(node)
+    scopes = _function_scopes(functions, source)
+    leading = _leading_function_map(scopes)
+    trailing = _trailing_function_map(scopes)
+    containing = _containing_function_map(comments, scopes)
+    return FunctionCommentIndex(leading, trailing, containing)
+
+
+def _function_scopes(functions: tuple[FunctionNode, ...], source: str) -> tuple[FunctionScope, ...]:
+    lexical_end_lines = _function_lexical_end_lines(functions, source)
+    scopes = (
+        _function_scope(function, lexical_end_lines)
+        for function in functions
+    )
+    return tuple(scopes)
+
+
+def _function_scope(function: FunctionNode, lexical_end_lines: dict[FunctionNode, int]) -> FunctionScope:
+    start_line = _statement_start_line(function)
+    ast_end_line = _function_end_line(function)
+    end_line = lexical_end_lines.get(function, ast_end_line)
+    return FunctionScope(function, start_line, end_line)
+
+
+def _function_lexical_end_lines(
+    functions: tuple[FunctionNode, ...],
+    source: str,
+) -> dict[FunctionNode, int]:
+    block_starts = _block_function_starts(functions)
+    indent_functions: dict[int, FunctionNode | None] = {}
+    end_lines: dict[FunctionNode, int] = {}
+    indent_depth = 0
+    for token in _source_tokens(source):
+        if token.type == tokenize.INDENT:
+            indent_functions[indent_depth] = block_starts.get(token.end)
+            indent_depth += 1
+            continue
+        if token.type != tokenize.DEDENT or indent_depth == 0:
+            continue
+        indent_depth -= 1
+        function = indent_functions[indent_depth]
+        if function is not None:
+            lexical_end = max(_function_end_line(function), token.start[0] - 1)
+            end_lines[function] = lexical_end
+    return end_lines
+
+
+def _block_function_starts(functions: tuple[FunctionNode, ...]) -> dict[CommentPosition, FunctionNode]:
+    starts: dict[CommentPosition, FunctionNode] = {}
+    for function in functions:
+        first_statement = function.body[0]
+        start_line = _statement_start_line(first_statement)
+        start = (start_line, first_statement.col_offset)
+        starts[start] = function
+    return starts
+
+
+def _leading_function_map(scopes: tuple[FunctionScope, ...]) -> CommentFunctionMap:
+    leading: CommentFunctionMap = {}
+    for scope in scopes:
+        position = (scope.start_line - 1, scope.node.col_offset)
+        leading[position] = scope.node
+    return leading
+
+
+def _trailing_function_map(scopes: tuple[FunctionScope, ...]) -> CommentFunctionMap:
+    trailing: CommentFunctionMap = {}
+    for scope in scopes:
+        position = (_function_end_line(scope.node) + 1, scope.node.col_offset)
+        trailing[position] = scope.node
+    return trailing
+
+
+def _containing_function_map(
+    comments: tuple[SourceComment, ...],
+    scopes: tuple[FunctionScope, ...],
+) -> CommentFunctionMap:
+    ordered_scopes = sorted(scopes, key=_function_scope_sort_key)
+    active_scopes: list[FunctionScope | None] = [None] * len(ordered_scopes)
+    active_indents = [0] * len(ordered_scopes)
+    containing: CommentFunctionMap = {}
+    next_scope = 0
+    active_depth = 0
+    for comment in sorted(comments, key=_comment_start):
+        comment_line, comment_column = comment.first_token.start
+        next_scope, active_depth = _activate_scopes(
+            ordered_scopes,
+            active_scopes,
+            active_indents,
+            next_scope,
+            active_depth,
+            comment_line,
+        )
+        active_depth = _active_scope_depth(active_scopes, active_depth, comment_line)
+        containing_index = bisect_left(active_indents, comment_column, hi=active_depth) - 1
+        if containing_index < 0:
+            continue
+        scope = active_scopes[containing_index]
+        if scope is not None and comment.last_token.end[0] <= scope.end_line:
+            containing[comment.first_token.start] = scope.node
+    return containing
+
+
+def _activate_scopes(
+    scopes: list[FunctionScope],
+    active_scopes: list[FunctionScope | None],
+    active_indents: list[int],
+    next_scope: int,
+    active_depth: int,
+    line: int,
+) -> tuple[int, int]:
+    while next_scope < len(scopes) and scopes[next_scope].start_line <= line:
+        scope = scopes[next_scope]
+        active_depth = _active_scope_depth(active_scopes, active_depth, scope.start_line)
+        active_scopes[active_depth] = scope
+        active_indents[active_depth] = scope.node.col_offset
+        active_depth += 1
+        next_scope += 1
+    return next_scope, active_depth
+
+
+def _active_scope_depth(
+    active_scopes: list[FunctionScope | None],
+    active_depth: int,
+    line: int,
+) -> int:
+    while active_depth > 0:
+        scope = active_scopes[active_depth - 1]
+        if scope is not None and scope.end_line >= line:
+            break
+        active_depth -= 1
+    return active_depth
+
+
+def _function_scope_sort_key(scope: FunctionScope) -> tuple[int, int, int]:
+    return (scope.start_line, -scope.end_line, scope.node.col_offset)
+
+
+def _comment_start(comment: SourceComment) -> CommentPosition:
+    return comment.first_token.start
+
+
 def _function_for_comment(
     comment: SourceComment,
-    functions: tuple[FunctionNode, ...],
+    function_index: FunctionCommentIndex,
 ) -> FunctionNode | None:
-    leading = _nearest_associated_function(comment, functions, _leads_function)
+    last_line, _ = comment.last_token.end
+    _, comment_column = comment.first_token.start
+    leading_position = (last_line, comment_column)
+    leading = function_index.leading.get(leading_position)
     if leading is not None:
         return leading
-    containing = _nearest_associated_function(comment, functions, _is_inside_function)
-    if containing is not None:
-        return containing
-    return _nearest_associated_function(comment, functions, _trails_function)
+    trailing = function_index.trailing.get(comment.first_token.start)
+    if trailing is not None:
+        return trailing
+    return function_index.containing.get(comment.first_token.start)
 
 
-def _nearest_associated_function(
-    comment: SourceComment,
-    functions: tuple[FunctionNode, ...],
-    association: Callable[[SourceComment, FunctionNode], bool],
-) -> FunctionNode | None:
-    candidates = (
-        function
-        for function in functions
-        if association(comment, function)
-    )
-    return min(candidates, key=_function_line_span, default=None)
+def _statement_start_line(node: ast.stmt) -> int:
+    decorators = getattr(node, "decorator_list", ())
+    decorator_lines = tuple(decorator.lineno for decorator in decorators)
+    return min((node.lineno,) + decorator_lines)
 
 
-def _leads_function(comment: SourceComment, node: FunctionNode) -> bool:
-    comment_line, _ = comment.last_token.end
-    _, comment_column = comment.first_token.start
-    is_adjacent = comment_line + 1 == _function_start_line(node)
-    has_same_indent = comment_column == node.col_offset
-    is_standalone = _is_standalone_comment(comment.first_token)
-    is_leading = is_standalone and is_adjacent
-    return is_leading and has_same_indent
-
-
-def _is_inside_function(comment: SourceComment, node: FunctionNode) -> bool:
-    first_line, _ = comment.first_token.start
-    last_line, _ = comment.last_token.end
-    start_line = _function_start_line(node)
-    end_line = node.end_lineno or node.lineno
-    starts_inside = start_line <= first_line
-    ends_inside = last_line <= end_line
-    return starts_inside and ends_inside
-
-
-def _trails_function(comment: SourceComment, node: FunctionNode) -> bool:
-    comment_line, comment_column = comment.first_token.start
-    end_line = node.end_lineno or node.lineno
-    is_adjacent = comment_line == end_line + 1
-    has_same_indent = comment_column == node.col_offset
-    is_standalone = _is_standalone_comment(comment.first_token)
-    is_trailing = is_standalone and is_adjacent
-    return is_trailing and has_same_indent
-
-
-def _function_start_line(node: FunctionNode) -> int:
-    decorator_lines = tuple(
-        decorator.lineno
-        for decorator in node.decorator_list
-    )
-    all_start_lines = (node.lineno,) + decorator_lines
-    return min(all_start_lines)
-
-
-def _function_line_span(node: FunctionNode) -> int:
-    end_line = node.end_lineno or node.lineno
-    start_line = _function_start_line(node)
-    return end_line - start_line
+def _function_end_line(node: FunctionNode) -> int:
+    return node.end_lineno or node.lineno
 
 
 def _compile_comment_matchers(sources: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
@@ -1425,7 +1550,7 @@ def _compile_comment_matchers(sources: tuple[str, ...]) -> tuple[re.Pattern[str]
 def _compile_comment_matcher(source: str) -> re.Pattern[str] | None:
     try:
         matcher = re.compile(source, re.IGNORECASE)
-    except re.error:
+    except (re.error, OverflowError):
         return None
     return matcher
 
