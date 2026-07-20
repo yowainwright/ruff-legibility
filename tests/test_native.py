@@ -41,6 +41,20 @@ def f(items):
 """
         self.assertIn("LEG005", native_codes(source))
 
+    def test_nested_comprehension_inside_f_string_reports(self) -> None:
+        source = '''
+def f(items):
+    return [f"{[child for child in item.children]}" for item in items]
+'''
+        self.assertIn("LEG005", native_codes(source))
+
+    def test_nested_comprehension_inside_lambda_reports(self) -> None:
+        source = """
+def f(items):
+    return [(lambda: [child for child in item.children]) for item in items]
+"""
+        self.assertIn("LEG005", native_codes(source))
+
     def test_membership_outside_loop_is_allowed(self) -> None:
         source = """
 def f(item, ids):

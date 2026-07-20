@@ -15,7 +15,7 @@ test-python:
 	uv run pytest
 
 test-scripts:
-	./test_setup.sh
+	./scripts/test_setup.sh
 
 build:
 	uv build

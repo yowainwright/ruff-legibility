@@ -6,20 +6,6 @@
 
 `ruff-legibility` is a Ruff-adjacent Python linter for readability and reviewability rules inspired by `eslint-plugin-legibility`.
 
-Ruff does not currently load third-party rule implementations from Python packages. This package therefore runs beside Ruff and emits Ruff-style diagnostics with `LEG###` codes.
-
-```sh
-ruff check .
-ruff-legibility check .
-```
-
-To keep `# noqa: LEG001` comments valid when Ruff checks unused or unknown `noqa` codes, add `LEG` as an external prefix in Ruff:
-
-```toml
-[tool.ruff.lint]
-external = ["LEG"]
-```
-
 ## Install
 
 ```sh
@@ -35,84 +21,18 @@ make check
 
 ## Usage
 
+Run it beside Ruff:
+
 ```sh
+ruff check .
 ruff-legibility check .
+```
+
+```sh
 ruff-legibility check src tests --output-format json
 ruff-legibility check . --select LEG001,LEG002 --ignore LEG007
 ruff-legibility check . --exit-zero
 ```
-
-Default text output is intentionally close to Ruff:
-
-```text
-example.py:4:8: LEG002 If condition has 2 boolean operators (max 0). Hoist it into a named boolean.
-```
-
-## Agent Skill
-
-<!-- agent skill installer command and target config from src/ruff_legibility/agent_skills; packaged files from src/ruff_legibility/skills/ruff-legibility -->
-
-The package includes a reusable Claude/Codex skill, but it is never installed
-automatically. Install it explicitly when you want local agents to use the
-`ruff-legibility` loop:
-
-```sh
-ruff-legibility install-skill
-ruff-legibility install-skill --target auto
-ruff-legibility install-skill --target codex
-ruff-legibility install-skill --path ~/.agents/skills --force
-```
-
-Default installs copy the skill to `~/.agents/skills/ruff-legibility`. Codex
-target installs copy it to `$CODEX_HOME/skills/ruff-legibility`, or
-`~/.codex/skills/ruff-legibility` when `CODEX_HOME` is not set.
-Auto target detection uses the packaged static target registry, prefers a
-configured target such as `CODEX_HOME`, then falls back to an existing known
-skill root, then `~/.agents/skills`.
-Use `--path` for any other agent skill root instead of adding vendor-specific
-folders to this repository.
-
-After installing the skill, use it in an agent prompt:
-
-```text
-Use $ruff-legibility to check Python readability and iterate on LEG diagnostics.
-```
-
-## Configuration
-
-Configuration can live in `pyproject.toml` under `[tool.ruff-legibility]`, or in `ruff-legibility.toml` / `.ruff-legibility.toml`.
-
-```toml
-[tool.ruff-legibility]
-select = ["LEG"]
-extend-select = []
-ignore = ["LEG007"]
-extend-ignore = []
-exclude = [".venv", "build", "dist"]
-max-expression-operators = 4
-max-if-operators = 0
-max-ternary-operators = 2
-max-computed-value-operators = 1
-max-control-flow-depth = 3
-max-array-chain-depth = 2
-min-object-lookup-chain-length = 3
-min-dirname-match-depth = 3
-comment-matchers = []
-comment-prefix-identifiers = []
-comment-suffix-identifiers = []
-
-[tool.ruff-legibility.per-file-ignores]
-"tests/*" = ["LEG003"]
-```
-
-Standalone config files omit the `tool.ruff-legibility` wrapper:
-
-```toml
-select = ["LEG"]
-ignore = ["LEG007"]
-```
-
-This repository includes a `ruff-legibility.toml` for its own source. The default package thresholds stay stricter than the project-local development config.
 
 ## Rules
 
@@ -595,20 +515,26 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG034 no-unmatched-comments`
 
-Reject inline comments and contiguous, equally indented comment blocks unless
-they match a configured regular expression, prefix identifier, or suffix
-identifier. With no options, the rule rejects every ordinary `#` comment.
-Each unmatched physical comment reports separately, whether it is a standalone
-line or trails Python code inline.
+`LEG034` checks standalone and trailing inline `#` comments.
 
-A function may contain one matcher-allowed physical `#` comment without an
-ownership identifier. Additional comments report `LEG034`, including stacked
-lines and equally indented comment blocks immediately above or below the
-function. Prefix- or suffix-owned blocks are exempt, and nested functions keep
-separate counts.
+#### Unmatched standalone and inline comments
 
-Python docstrings are not comments and are left unchanged. Executable shebangs
-and valid PEP 263 encoding declarations are also ignored.
+Fails with two diagnostics:
+
+```python
+# Explain the assignment.
+value = 1  # Keep this value stable.
+```
+
+Fix:
+
+```diff
+- # Convert cents to dollars.
+- total_dollars = cents / 100  # Store the converted total.
++ total_dollars = cents / 100
+```
+
+#### Setup
 
 ```toml
 [tool.ruff-legibility]
@@ -622,71 +548,225 @@ comment-prefix-identifiers = ["HUMAN", "LEGAL", "SECURITY"]
 comment-suffix-identifiers = ["@owned"]
 ```
 
-Matchers are case-insensitive regular-expression sources applied to the comment
-body without its leading `#`. Invalid patterns are ignored. Prefix and suffix
-identifiers are literal, case-insensitive, and require a Python identifier
-boundary. Empty or whitespace-only identifiers never match.
+| Setting | Allows the comment | Exempt from one-comment-per-function limit |
+| --- | --- | --- |
+| `comment-matchers` | Regex matches | no |
+| `comment-prefix-identifiers` | Block starts with identifier | yes |
+| `comment-suffix-identifiers` | Block ends with identifier | yes |
+
+Matching is case-insensitive and ignores the leading `#`.
+
+#### Regex-matched comments
+
+Passes with the setup above:
+
+```python
+# ENG-481: Provider retries must remain ordered.
+for retry in retries:
+    send(retry)
+
+timeout = 30  # OPS-92: Keep worker and provider timeouts aligned.
+```
+
+Only one regex-matched physical comment is allowed per function. This reports
+the second comment:
+
+```python
+def load_value():
+    value = load()  # ENG-481: Load the configured value once.
+    # ENG-482: Preserve the configured fallback.
+    return value or fallback()
+```
+
+Fix by keeping one useful comment:
 
 ```diff
-- # Loop over each retry.
-+ # HUMAN: The provider requires retries to remain ordered.
-  for retry in retries:
-      send(retry)
+ def load_value():
+-    value = load()  # ENG-481: Load the configured value once.
+-    # ENG-482: Preserve the configured fallback.
++    # ENG-481: Load once and use the configured fallback when empty.
++    value = load()
+     return value or fallback()
+```
+
+The same limit applies immediately above and below a function. The second line
+in each block reports:
+
+```python
+# ENG-481: First leading comment.
+# ENG-482: Second leading comment.
+def first():
+    return 1
+
+
+def second():
+    return 2
+# ENG-483: First trailing comment.
+# ENG-484: Second trailing comment.
+```
+
+An indented comment after the final statement still belongs to the function.
+This reports the second comment:
+
+```python
+def load_value():
+    # ENG-481: Load the configured value.
+    value = load()
+    return value
+    # ENG-482: Preserve the provider contract.
+```
+
+Nested functions have separate counts:
+
+```python
+def outer():
+    # ENG-481: Preserve the outer contract.
+    value = load()
+
+    def inner():
+        # ENG-482: Preserve the inner contract.
+        return value
+
+    return inner()
+```
+
+A comment immediately below a nested function belongs to that nested function.
+This reports the second comment:
+
+```python
+def outer():
+    def inner():
+        # ENG-481: Preserve the inner contract.
+        return 1
+    # ENG-482: Keep this adjacent to the inner function.
+    return inner()
+```
+
+#### Human-owned comment blocks
+
+Prefix- and suffix-owned blocks pass and do not count toward the function
+limit:
+
+```python
+def load_value():
+    # HUMAN: The provider requires ordered retries.
+    # Reordering these calls breaks failover.
+    retry()
+
+    # The operator selects this timeout.
+    # The worker must use the same value. @owned
+    return timeout
+```
+
+Identifiers require a boundary:
+
+```diff
+- # HUMANIZED: This is not owned.
++ # HUMAN: This block is owned.
+
+- value = 1  # Preserve this not@owned
++ value = 1  # Preserve this. @owned
+```
+
+#### Ignored Python metadata
+
+These pass without comment configuration:
+
+```python
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Module documentation."""
+
+
+def load():
+    """Load the value."""
+```
+
+Encoding cookies must occupy a comment-only line:
+
+```diff
+- value = 1  # coding: utf-8
++ # coding: utf-8
++ value = 1
 ```
 
 ## Recipes
 
-Use one committed `ruff-legibility` configuration in every context. Change the
-scope and failure behavior, not the rules each context sees. Local feedback then
-stays representative of CI without interrupting every stage of development.
-
 | Context | Scope | Enforcement |
 | --- | --- | --- |
-| Agent edit loop | Python files the agent touched | Blocking |
-| Human exploration | Current file or working area | Advisory with `--exit-zero` |
-| Pre-commit | Staged Python files | Blocking |
-| CI | Entire repository | Blocking and annotated |
+| Agent | Edited Python files | blocking |
+| Human, while editing | Current file or package | `--exit-zero` |
+| Human, before commit | Changed Python files | blocking |
+| Pre-commit | Staged Python files | blocking |
+| CI | Repository | blocking |
 
-### Agents
+Use the same committed configuration in every context.
 
-Install the packaged skill once, then ask the agent to run Ruff and
-`ruff-legibility` on the Python files it changed:
+### Agent: check edited files
+
+Setup:
 
 ```sh
 ruff-legibility install-skill --target auto
+```
+
+Prompt:
+
+```text
+Use $ruff-legibility on every Python file you edit. Fix diagnostics introduced
+by this task. Remove comments you add when LEG034 reports them. Do not add
+ownership markers, matchers, or noqa suppressions.
+```
+
+Edit loop:
+
+```sh
 ruff check src/package/changed.py
 ruff-legibility check src/package/changed.py
 ```
 
-`ruff-legibility` is file-based, not diff-aware. Scoping the edit loop to
-touched files keeps unrelated legacy diagnostics out of the agent's path while
-CI still checks the repository-wide policy.
+Fix the code instead of disguising an agent comment as human-owned:
 
-Agents should fix diagnostics introduced by their edit. They must not add
-comment matchers, ownership identifiers, or `# noqa` suppressions to make their
-own code pass. An agent-added unmatched comment should be removed. Existing
-diagnostics outside the task should be reported rather than suppressed or
-rewritten. Ownership-marked comments should remain unchanged unless the task
-explicitly includes comment cleanup.
+```diff
+ def subtotal(balances):
+-    # HUMAN: Add every active balance.
+     return sum(balance for balance in balances if balance.active)
+```
 
-### Humans
+Keep existing human-owned comments unchanged:
 
-Use advisory mode while exploring a change:
+```python
+# HUMAN: This order is part of the provider contract.
+send(primary)
+send(fallback)
+```
+
+### Human: warn while editing, block before commit
 
 ```sh
 ruff-legibility check src/package --exit-zero
+ruff-legibility check src/package/changed.py
 ```
 
-Before committing, run the same command without `--exit-zero` on the files being
-committed. Humans can use configured prefix or suffix identifiers for context
-that is intentionally retained. Keep regular-expression matchers narrow and
-reserve them for project conventions such as type-checker, formatter, coverage,
-or ticket directives. Reserve `# noqa: LEG###` for an isolated false positive.
+Keep intentional context with a configured ownership identifier:
 
-### Pre-commit
+```python
+def send_batch():
+    # HUMAN: The provider contract requires primary before fallback.
+    # Reversing these calls can duplicate deliveries.
+    send(primary)
+    send(fallback)
+```
 
-The pre-commit framework appends staged Python filenames to this command, so the
-blocking check remains narrow:
+Suppress an isolated false positive on its diagnostic line:
+
+```python
+value = legacy_loader()  # noqa: LEG034
+```
+
+### Pre-commit: block staged Python files
+
+`pre-commit` appends the staged filenames:
 
 ```yaml
 repos:
@@ -699,10 +779,7 @@ repos:
         types: [python]
 ```
 
-### CI
-
-Run Ruff first, then run `ruff-legibility` across the repository. GitHub output
-adds annotations, while the nonzero exit status still fails the required check:
+### CI: block the repository
 
 ```yaml
 - run: uv sync --locked --all-groups
@@ -710,15 +787,88 @@ adds annotations, while the nonzero exit status still fails the required check:
 - run: uv run ruff-legibility check . --output-format github
 ```
 
-Do not use `--exit-zero` in a required CI check. Keep CI on the same committed
-configuration used locally so a passing local run predicts a passing build.
+### Existing codebase: warn, fix, then block
 
-### Gradual adoption
+```sh
+# Inventory without blocking.
+ruff-legibility check . --exit-zero
 
-1. Run `ruff-legibility check . --exit-zero` to inventory the existing baseline.
-2. Tune thresholds, exclusions, per-file ignores, and comment matchers narrowly.
-3. Fix the remaining baseline diagnostics.
-4. Remove `--exit-zero` and make the repository-wide CI check required.
+# After tuning configuration and fixing the baseline, block locally and in CI.
+ruff-legibility check .
+```
+
+## Agent Skill
+
+<!-- agent skill installer command and target config from src/ruff_legibility/agent_skills; packaged files from src/ruff_legibility/skills/ruff-legibility -->
+
+The package includes a reusable Claude/Codex skill, but it is never installed
+automatically. Install it explicitly when you want local agents to use the
+`ruff-legibility` loop:
+
+```sh
+ruff-legibility install-skill
+ruff-legibility install-skill --target auto
+ruff-legibility install-skill --target codex
+ruff-legibility install-skill --path ~/.agents/skills --force
+```
+
+Default installs copy the skill to `~/.agents/skills/ruff-legibility`. Codex
+target installs copy it to `$CODEX_HOME/skills/ruff-legibility`, or
+`~/.codex/skills/ruff-legibility` when `CODEX_HOME` is not set.
+Auto target detection uses the packaged static target registry, prefers a
+configured target such as `CODEX_HOME`, then falls back to an existing known
+skill root, then `~/.agents/skills`.
+Use `--path` for any other agent skill root instead of adding vendor-specific
+folders to this repository.
+
+After installing the skill, use it in an agent prompt:
+
+```text
+Use $ruff-legibility to check Python readability and iterate on LEG diagnostics.
+```
+
+## Configuration
+
+Keep `# noqa: LEG001` valid when Ruff checks unknown `noqa` codes:
+
+```toml
+[tool.ruff.lint]
+external = ["LEG"]
+```
+
+Configuration can live in `pyproject.toml` under `[tool.ruff-legibility]`, or in `ruff-legibility.toml` / `.ruff-legibility.toml`.
+
+```toml
+[tool.ruff-legibility]
+select = ["LEG"]
+extend-select = []
+ignore = ["LEG007"]
+extend-ignore = []
+exclude = [".venv", "build", "dist"]
+max-expression-operators = 4
+max-if-operators = 0
+max-ternary-operators = 2
+max-computed-value-operators = 1
+max-control-flow-depth = 3
+max-array-chain-depth = 2
+min-object-lookup-chain-length = 3
+min-dirname-match-depth = 3
+comment-matchers = []
+comment-prefix-identifiers = []
+comment-suffix-identifiers = []
+
+[tool.ruff-legibility.per-file-ignores]
+"tests/*" = ["LEG003"]
+```
+
+Standalone config files omit the `tool.ruff-legibility` wrapper:
+
+```toml
+select = ["LEG"]
+ignore = ["LEG007"]
+```
+
+This repository includes a `ruff-legibility.toml` for its own source. The default package thresholds stay stricter than the project-local development config.
 
 ## Development
 
@@ -730,6 +880,13 @@ uv run ruff check .
 uv run ruff-legibility check src tests
 uv run pytest
 uv build
+```
+
+Repository scripts:
+
+```sh
+./scripts/setup.sh
+./scripts/test_setup.sh
 ```
 
 Local release artifact checks should use:

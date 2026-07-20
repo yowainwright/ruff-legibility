@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use ruff_python_ast::{
-    BoolOp, CmpOp, ExceptHandler, Expr, ModModule, Parameters, Stmt, StmtFunctionDef, UnaryOp,
+    BoolOp, CmpOp, ExceptHandler, Expr, InterpolatedStringElement, ModModule, Parameters, Stmt,
+    StmtFunctionDef, UnaryOp,
 };
 use ruff_python_parser::parse_module;
 use ruff_source_file::SourceFileBuilder;
@@ -292,6 +293,7 @@ impl Visitor {
         match expr {
             Expr::If(if_expr) => self.visit_conditional_expr(if_expr),
             Expr::Named(named) => self.visit_named_expr(named),
+            Expr::Lambda(lambda) => self.visit_expr(&lambda.body),
             Expr::Compare(compare) => self.visit_compare(compare),
             Expr::BoolOp(bool_op) => self.visit_bool_op(bool_op),
             Expr::Call(call) => self.visit_call(call, has_parent_chain),
@@ -314,6 +316,8 @@ impl Visitor {
             Expr::SetComp(comp) => self.visit_comprehension(comp, &comp.elt, &comp.generators),
             Expr::Generator(comp) => self.visit_comprehension(comp, &comp.elt, &comp.generators),
             Expr::DictComp(comp) => self.visit_dict_comprehension(comp),
+            Expr::FString(f_string) => self.visit_f_string(f_string),
+            Expr::TString(t_string) => self.visit_t_string(t_string),
             Expr::Await(await_expr) => self.visit_expr(&await_expr.value),
             Expr::Yield(yield_expr) => self.visit_optional_expr(yield_expr.value.as_deref()),
             Expr::YieldFrom(yield_expr) => self.visit_expr(&yield_expr.value),
@@ -374,6 +378,31 @@ impl Visitor {
                 self.visit_expr(key);
             }
             self.visit_expr(&item.value);
+        }
+    }
+
+    fn visit_f_string(&mut self, f_string: &ruff_python_ast::ExprFString) {
+        for element in f_string.value.elements() {
+            self.visit_interpolated_string_element(element);
+        }
+    }
+
+    fn visit_t_string(&mut self, t_string: &ruff_python_ast::ExprTString) {
+        for element in t_string.value.elements() {
+            self.visit_interpolated_string_element(element);
+        }
+    }
+
+    fn visit_interpolated_string_element(&mut self, element: &InterpolatedStringElement) {
+        let InterpolatedStringElement::Interpolation(interpolation) = element else {
+            return;
+        };
+        self.visit_expr(&interpolation.expression);
+        let Some(format_spec) = &interpolation.format_spec else {
+            return;
+        };
+        for format_element in &format_spec.elements {
+            self.visit_interpolated_string_element(format_element);
         }
     }
 

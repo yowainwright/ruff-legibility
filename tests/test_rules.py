@@ -306,6 +306,18 @@ def load_value():
 
         self.assertEqual(codes(source, settings=settings), ["LEG034"])
 
+    def test_unmatched_comments_counts_indented_comments_after_final_statement(self) -> None:
+        source = """
+def load_value():
+    # ENG-481: Load the configured value.
+    value = load()
+    return value
+    # ENG-482: Preserve the provider contract.
+"""
+        settings = Settings(select=("LEG034",), comment_matchers=(r"\bENG-\d+\b",))
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034"])
+
     def test_unmatched_comments_checks_stacks_above_and_below_functions(self) -> None:
         source = """
 # ENG-481: First leading comment.
@@ -351,6 +363,19 @@ def outer():
         settings = Settings(select=("LEG034",), comment_matchers=(r"\bENG-\d+\b",))
 
         self.assertEqual(codes(source, settings=settings), [])
+
+    def test_unmatched_comments_assigns_nested_trailing_comment_to_inner_function(self) -> None:
+        source = """
+def outer():
+    def inner():
+        # ENG-481: Preserve the inner contract.
+        return 1
+    # ENG-482: Keep this adjacent to the inner function.
+    return inner()
+"""
+        settings = Settings(select=("LEG034",), comment_matchers=(r"\bENG-\d+\b",))
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034"])
 
     def test_comment_between_functions_belongs_to_following_function(self) -> None:
         source = """
@@ -449,9 +474,26 @@ def f():
 
         self.assertEqual(codes(source, settings=settings), ["LEG034"])
 
+    def test_unmatched_comments_checks_inline_encoding_comments(self) -> None:
+        settings = Settings(select=("LEG034",))
+        sources = (
+            "value = 1  # coding: utf-8\n",
+            "\nvalue = 1  # coding: utf-8\n",
+        )
+
+        for source in sources:
+            with self.subTest(source=source):
+                self.assertEqual(codes(source, settings=settings), ["LEG034"])
+
     def test_unmatched_comments_ignores_invalid_matcher_patterns(self) -> None:
         source = "# Explain the assignment.\nvalue = 1\n"
         settings = Settings(select=("LEG034",), comment_matchers=("[",))
+
+        self.assertEqual(codes(source, settings=settings), ["LEG034"])
+
+    def test_unmatched_comments_ignores_overflowed_matcher_quantifiers(self) -> None:
+        source = "# Explain the assignment.\nvalue = 1\n"
+        settings = Settings(select=("LEG034",), comment_matchers=("a{4294967296}",))
 
         self.assertEqual(codes(source, settings=settings), ["LEG034"])
 

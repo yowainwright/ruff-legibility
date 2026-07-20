@@ -11,7 +11,14 @@ All notable user-facing changes to `ruff-legibility` should be recorded here.
 - Document comment ownership in the packaged agent skill.
 - Add agent, human, pre-commit, CI, and gradual-adoption recipes.
 - Check every configured comment ownership identifier when candidates overlap.
-- Fix native `LEG005` parity for membership conditions and nested comprehensions.
+- Associate comments through a token-derived function scope index, including
+  indented trailing-body comments and comments after nested functions.
+- Require encoding cookies to occupy comment-only lines and safely ignore
+  overflowed comment matcher quantifiers.
+- Fix native `LEG005` parity for membership conditions, nested comprehensions,
+  interpolated string fields, and lambda bodies.
+- Move setup scripts under `scripts/` and ignore local `.claude/` and `.codex/`
+  directories.
 
 ## 0.3.1
 

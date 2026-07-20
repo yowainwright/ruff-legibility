@@ -15,11 +15,9 @@ target/
 .dolt/
 *.db
 .beads-credential-key
-.claude/*
-!.claude/rules/
-!.claude/rules/*.md
 CLAUDE.md
 .beads/
 venv/
 *.pyc
 .claude/
+.codex/
