@@ -799,7 +799,7 @@ ruff-legibility check .
 
 ## Agent Skill
 
-<!-- agent skill installer command and target config from src/ruff_legibility/agent_skills; packaged files from src/ruff_legibility/skills/ruff-legibility -->
+<!-- agent skill installer config from src/ruff_legibility/agent_skills; generated files from scripts/agent/templates/ruff-legibility -->
 
 The package includes a reusable Claude/Codex skill, but it is never installed
 automatically. Install it explicitly when you want local agents to use the
@@ -825,6 +825,25 @@ After installing the skill, use it in an agent prompt:
 
 ```text
 Use $ruff-legibility to check Python readability and iterate on LEG diagnostics.
+```
+
+Generate tracked package and shared-skill files:
+
+```sh
+make build-agent
+```
+
+Generate ignored local rule pointers:
+
+```sh
+uv run python -m scripts.agent.build --target codex
+uv run python -m scripts.agent.build --target claude
+```
+
+Check generated files without writing:
+
+```sh
+make check-agent
 ```
 
 ## Configuration
@@ -877,7 +896,7 @@ Common commands:
 ```sh
 uv sync --all-groups
 uv run ruff check .
-uv run ruff-legibility check src tests
+uv run ruff-legibility check src tests scripts
 uv run pytest
 uv build
 ```
@@ -887,6 +906,7 @@ Repository scripts:
 ```sh
 ./scripts/setup.sh
 ./scripts/test_setup.sh
+uv run python -m scripts.agent.build --target package,agents
 ```
 
 Local release artifact checks should use:

@@ -51,7 +51,6 @@ Before opening a pull request:
 
 - Run `make check`.
 - Update `README.md` when behavior or CLI usage changes.
-- Update `CHANGELOG.md` for user-facing changes.
 - Keep rule changes narrowly scoped.
 
 ## Issues

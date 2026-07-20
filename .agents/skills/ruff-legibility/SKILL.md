@@ -99,7 +99,7 @@ In this repository, use `uv` and the local package:
 
 ```sh
 uv run ruff check .
-uv run ruff-legibility check src tests
+uv run ruff-legibility check src tests scripts
 uv run pytest
 uv build
 ```
@@ -116,7 +116,8 @@ When changing rules:
 2. Add positive and negative tests in `tests/`.
 3. Preserve `select`, `ignore`, per-file ignores, and `# noqa` behavior.
 4. Update README rule tables and examples if public behavior changed.
-5. Update `CHANGELOG.md` for user-facing changes.
+5. Rebuild generated agent artifacts with
+   `uv run python -m scripts.agent.build --target package,agents`.
 
 ## Review Guidance
 
