@@ -179,6 +179,11 @@ def _create_skill_artifacts(
     destination_root: Path,
     template_root: Path,
 ) -> tuple[AgentArtifact, ...]:
+    template_root_is_missing = not template_root.is_dir()
+    if template_root_is_missing:
+        error_message = f"agent template root does not exist: {template_root}"
+        raise FileNotFoundError(error_message)
+
     candidate_paths = template_root.rglob("*")
     template_paths = sorted(path for path in candidate_paths if path.is_file())
     artifacts = (

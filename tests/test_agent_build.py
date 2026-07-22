@@ -91,6 +91,23 @@ class AgentBuildTests(unittest.TestCase):
             self.assertFalse(old_artifact.exists())
             self.assertTrue(old_artifact.with_name("new.md").is_file())
 
+    def test_missing_template_root_does_not_delete_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_agent_artifacts(root=root, targets=("package",))
+            artifact = root / "src/ruff_legibility/skills/ruff-legibility/SKILL.md"
+            missing_template_root = root / "missing-templates"
+
+            for operation in (check_agent_artifacts, write_agent_artifacts):
+                with self.subTest(operation=operation.__name__):
+                    with self.assertRaisesRegex(FileNotFoundError, "template root does not exist"):
+                        operation(
+                            root=root,
+                            targets=("package",),
+                            template_root=missing_template_root,
+                        )
+                    self.assertTrue(artifact.is_file())
+
     def test_repository_artifacts_match_generator(self) -> None:
         root = Path(__file__).resolve().parents[1]
 
