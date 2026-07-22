@@ -74,8 +74,10 @@ def write_agent_artifacts(
     *,
     root: Path = REPOSITORY_ROOT,
     targets: Sequence[AgentBuildTarget] = (DEFAULT_BUILD_TARGET,),
+    template_root: Path = TEMPLATE_ROOT,
 ) -> tuple[AgentArtifact, ...]:
-    artifacts = _artifacts_for_targets(targets)
+    artifacts = _artifacts_for_targets(targets, template_root)
+    _remove_unexpected_artifacts(root, targets, artifacts)
     for artifact in artifacts:
         destination = root / artifact.relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -87,10 +89,12 @@ def check_agent_artifacts(
     *,
     root: Path = REPOSITORY_ROOT,
     targets: Sequence[AgentBuildTarget] = (DEFAULT_BUILD_TARGET,),
+    template_root: Path = TEMPLATE_ROOT,
 ) -> tuple[Path, ...]:
-    artifacts = _artifacts_for_targets(targets)
-    stale_paths = (artifact.relative_path for artifact in artifacts if _is_stale(root, artifact))
-    return tuple(stale_paths)
+    artifacts = _artifacts_for_targets(targets, template_root)
+    stale_paths = {artifact.relative_path for artifact in artifacts if _is_stale(root, artifact)}
+    unexpected_paths = set(_unexpected_artifact_paths(root, targets, artifacts))
+    return tuple(sorted(stale_paths | unexpected_paths))
 
 
 def main(args: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> int:
@@ -195,9 +199,44 @@ def _create_template_artifact(
     return AgentArtifact(target, relative_path, content)
 
 
-def _artifacts_for_targets(targets: Sequence[AgentBuildTarget]) -> tuple[AgentArtifact, ...]:
-    artifact_groups = (create_agent_artifacts(target) for target in targets)
+def _artifacts_for_targets(
+    targets: Sequence[AgentBuildTarget],
+    template_root: Path = TEMPLATE_ROOT,
+) -> tuple[AgentArtifact, ...]:
+    artifact_groups = (
+        create_agent_artifacts(target, template_root=template_root) for target in targets
+    )
     return tuple(chain.from_iterable(artifact_groups))
+
+
+def _unexpected_artifact_paths(
+    root: Path,
+    targets: Sequence[AgentBuildTarget],
+    artifacts: Sequence[AgentArtifact],
+) -> tuple[Path, ...]:
+    expected_paths = {artifact.relative_path for artifact in artifacts}
+    destination_roots = (
+        root / _skill_destination(target)
+        for target in targets
+        if target in {"package", "agents"}
+    )
+    candidate_paths = (
+        path.relative_to(root)
+        for destination_root in destination_roots
+        for path in destination_root.rglob("*")
+        if path.is_file() or path.is_symlink()
+    )
+    return tuple(sorted(set(candidate_paths) - expected_paths))
+
+
+def _remove_unexpected_artifacts(
+    root: Path,
+    targets: Sequence[AgentBuildTarget],
+    artifacts: Sequence[AgentArtifact],
+) -> None:
+    unexpected_paths = _unexpected_artifact_paths(root, targets, artifacts)
+    for relative_path in unexpected_paths:
+        (root / relative_path).unlink()
 
 
 def _is_stale(root: Path, artifact: AgentArtifact) -> bool:

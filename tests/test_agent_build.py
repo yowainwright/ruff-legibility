@@ -68,6 +68,29 @@ class AgentBuildTests(unittest.TestCase):
             self.assertEqual(stale_paths, (skill_path.relative_to(root),))
             self.assertEqual(skill_path.read_text(), "stale\n")
 
+    def test_renamed_template_reports_and_removes_old_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_root = Path(directory)
+            root = temporary_root / "repository"
+            template_root = temporary_root / "templates"
+            template_root.mkdir()
+            old_template = template_root / "old.md"
+            old_template.write_text("old\n", encoding="utf-8")
+            write_agent_artifacts(root=root, targets=("package",), template_root=template_root)
+            old_artifact = root / "src/ruff_legibility/skills/ruff-legibility/old.md"
+
+            old_template.rename(template_root / "new.md")
+            stale_paths = check_agent_artifacts(
+                root=root,
+                targets=("package",),
+                template_root=template_root,
+            )
+            write_agent_artifacts(root=root, targets=("package",), template_root=template_root)
+
+            self.assertIn(old_artifact.relative_to(root), stale_paths)
+            self.assertFalse(old_artifact.exists())
+            self.assertTrue(old_artifact.with_name("new.md").is_file())
+
     def test_repository_artifacts_match_generator(self) -> None:
         root = Path(__file__).resolve().parents[1]
 
