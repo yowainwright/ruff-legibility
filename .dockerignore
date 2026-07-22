@@ -1,0 +1,11 @@
+.git
+.venv
+.pytest_cache
+.ruff_cache
+build
+dist
+target
+**/__pycache__
+**/*.pyc
+**/*.so
+

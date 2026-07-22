@@ -6,34 +6,6 @@
 
 `ruff-legibility` is a Ruff-adjacent Python linter for readability and reviewability rules inspired by `eslint-plugin-legibility`.
 
-## Install
-
-```sh
-pip install ruff-legibility
-```
-
-For local development:
-
-```sh
-uv sync --all-groups
-make check
-```
-
-## Usage
-
-Run it beside Ruff:
-
-```sh
-ruff check .
-ruff-legibility check .
-```
-
-```sh
-ruff-legibility check src tests --output-format json
-ruff-legibility check . --select LEG001,LEG002 --ignore LEG007
-ruff-legibility check . --exit-zero
-```
-
 ## Rules
 
 Each rule has an inline dos / don'ts diff example in [Examples](#examples).
@@ -42,40 +14,40 @@ Each rule has an inline dos / don'ts diff example in [Examples](#examples).
 
 | Code | Rule | Default |
 | --- | --- | --- |
-| [`LEG001`](#leg001-max-expression-operators) | Limit readability operators inside a single expression. | on |
-| [`LEG002`](#leg002-hoist-if-operators) | Prefer a named boolean before operator-heavy `if` / `while` conditions. | on |
-| [`LEG003`](#leg003-max-control-flow-depth) | Limit nested control-flow depth. | on |
-| [`LEG004`](#leg004-no-complex-ternary) | Avoid complex ternary expressions. | on |
-| [`LEG005`](#leg005-no-quadratic-patterns) | Flag likely quadratic patterns such as nested loops and repeated membership checks in loops. | on |
-| [`LEG006`](#leg006-no-redundant-boolean-logic) | Avoid redundant boolean comparisons and boolean ternaries like `flag == True` or `True if flag else False`. | on |
-| [`LEG007`](#leg007-prefer-positive-condition-names) | Prefer positive condition names over names like `is_not_ready`. | on |
-| [`LEG008`](#leg008-no-trivial-wrapper-functions) | Avoid trivial wrapper functions that only forward parameters to another call. | on |
-| [`LEG009`](#leg009-prefer-early-return) | Avoid `else` branches after a branch that already exits. | on |
-| [`LEG010`](#leg010-prefer-guard-clauses) | Prefer guard clauses over wrapping the main path in one large `if` block. | on |
-| [`LEG011`](#leg011-max-array-chain-depth) | Limit consecutive collection-style method chains. | on |
-| [`LEG012`](#leg012-no-computed-values) | Prefer named values before returning computed expressions or building dict values. | on |
-| [`LEG013`](#leg013-no-hidden-side-effects) | Avoid mutations and assignment expressions hidden inside expressions. | on |
-| [`LEG014`](#leg014-no-standalone-array-mutations) | Avoid standalone list mutation calls when an expression is clearer. | on |
-| [`LEG015`](#leg015-prefer-concat-object-assign) | Prefer explicit collection composition over starred literal unpacking. | on |
-| [`LEG016`](#leg016-require-executable-shebang) | Require configured executable Python source files to start with a shebang. | on |
-| [`LEG017`](#leg017-no-direct-python-bin-smoke) | Prefer smoke-testing installed Python package entry points. | on |
-| [`LEG018`](#leg018-no-repeated-collection-search) | Avoid repeated scans over the same collection in one scope. | on |
-| [`LEG019`](#leg019-no-single-use-renaming-alias) | Avoid aliases that only rename another value for one use. | on |
-| [`LEG020`](#leg020-no-unnecessary-lambda) | Avoid lambdas that only forward their parameters to another callable. | on |
-| [`LEG021`](#leg021-prefer-flat-comprehension) | Prefer a flat comprehension over map followed by flattening. | on |
-| [`LEG022`](#leg022-no-identity-array-callback) | Avoid map/filter callbacks that keep every item unchanged. | on |
-| [`LEG023`](#leg023-no-redundant-none-fallback) | Avoid fallback expressions that only return `None` unchanged. | on |
-| [`LEG024`](#leg024-prefer-object-lookup) | Prefer set or dict lookups over long equality-or chains. | on |
-| [`LEG025`](#leg025-require-filename-matches-dirname) | Require files in named subdirectories to match the directory name. | on |
-| [`LEG026`](#leg026-no-mixed-filename-casing) | Avoid filenames that mix casing conventions. | on |
-| [`LEG027`](#leg027-no-identity-comprehension) | Avoid comprehensions that keep every item unchanged. | on |
-| [`LEG028`](#leg028-prefer-comprehension-over-map-filter) | Prefer comprehensions over map/filter calls with lambdas. | on |
-| [`LEG029`](#leg029-no-loop-append-comprehension) | Prefer comprehensions over simple list-building append loops. | on |
-| [`LEG030`](#leg030-no-repeated-comprehension-filter) | Avoid filtering the same collection with comprehensions multiple times in one scope. | on |
-| [`LEG031`](#leg031-no-deep-subscript-chain) | Avoid deep subscript chains without named intermediate values. | on |
-| [`LEG032`](#leg032-prefer-named-exception-context) | Prefer named context when wrapping or logging broad exceptions. | on |
-| [`LEG033`](#leg033-no-boolean-parameter-name-drift) | Avoid positive boolean names assigned from inverted expressions. | on |
-| [`LEG034`](#leg034-no-unmatched-comments) | Reject unmatched comments and unowned comment stacking within functions. | on |
+| [`LEG001`](#leg001-example-diff) | Limit readability operators inside a single expression. | on |
+| [`LEG002`](#leg002-example-diff) | Prefer a named boolean before operator-heavy `if` / `while` conditions. | on |
+| [`LEG003`](#leg003-example-diff) | Limit nested control-flow depth. | on |
+| [`LEG004`](#leg004-example-diff) | Avoid complex ternary expressions. | on |
+| [`LEG005`](#leg005-example-diff) | Flag likely quadratic patterns such as nested loops and repeated membership checks in loops. | on |
+| [`LEG006`](#leg006-example-diff) | Avoid redundant boolean comparisons and boolean ternaries like `flag == True` or `True if flag else False`. | on |
+| [`LEG007`](#leg007-example-diff) | Prefer positive condition names over names like `is_not_ready`. | on |
+| [`LEG008`](#leg008-example-diff) | Avoid trivial wrapper functions that only forward parameters to another call. | on |
+| [`LEG009`](#leg009-example-diff) | Avoid `else` branches after a branch that already exits. | on |
+| [`LEG010`](#leg010-example-diff) | Prefer guard clauses over wrapping the main path in one large `if` block. | on |
+| [`LEG011`](#leg011-example-diff) | Limit consecutive collection-style method chains. | on |
+| [`LEG012`](#leg012-example-diff) | Prefer named values before returning computed expressions or building dict values. | on |
+| [`LEG013`](#leg013-example-diff) | Avoid mutations and assignment expressions hidden inside expressions. | on |
+| [`LEG014`](#leg014-example-diff) | Avoid standalone list mutation calls when an expression is clearer. | on |
+| [`LEG015`](#leg015-example-diff) | Prefer explicit collection composition over starred literal unpacking. | on |
+| [`LEG016`](#leg016-example-diff) | Require configured executable Python source files to start with a shebang. | on |
+| [`LEG017`](#leg017-example-diff) | Prefer smoke-testing installed Python package entry points. | on |
+| [`LEG018`](#leg018-example-diff) | Avoid repeated scans over the same collection in one scope. | on |
+| [`LEG019`](#leg019-example-diff) | Avoid aliases that only rename another value for one use. | on |
+| [`LEG020`](#leg020-example-diff) | Avoid lambdas that only forward their parameters to another callable. | on |
+| [`LEG021`](#leg021-example-diff) | Prefer a flat comprehension over map followed by flattening. | on |
+| [`LEG022`](#leg022-example-diff) | Avoid map/filter callbacks that keep every item unchanged. | on |
+| [`LEG023`](#leg023-example-diff) | Avoid fallback expressions that only return `None` unchanged. | on |
+| [`LEG024`](#leg024-example-diff) | Prefer set or dict lookups over long equality-or chains. | on |
+| [`LEG025`](#leg025-example-diff) | Require files in named subdirectories to match the directory name. | on |
+| [`LEG026`](#leg026-example-diff) | Avoid filenames that mix casing conventions. | on |
+| [`LEG027`](#leg027-example-diff) | Avoid comprehensions that keep every item unchanged. | on |
+| [`LEG028`](#leg028-example-diff) | Prefer comprehensions over map/filter calls with lambdas. | on |
+| [`LEG029`](#leg029-example-diff) | Prefer comprehensions over simple list-building append loops. | on |
+| [`LEG030`](#leg030-example-diff) | Avoid filtering the same collection with comprehensions multiple times in one scope. | on |
+| [`LEG031`](#leg031-example-diff) | Avoid deep subscript chains without named intermediate values. | on |
+| [`LEG032`](#leg032-example-diff) | Prefer named context when wrapping or logging broad exceptions. | on |
+| [`LEG033`](#leg033-example-diff) | Avoid positive boolean names assigned from inverted expressions. | on |
+| [`LEG034`](#leg034-example-diffs) | Reject unmatched comments and unowned comment stacking within functions. | on |
 
 ## Examples
 
@@ -87,7 +59,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG001 max-expression-operators`
 
-#### do / don't
+#### LEG001 example diff
 
 ```diff
 - return user.is_active and user.score > 10 and (user.role == "admin" or user.role == "owner")
@@ -101,7 +73,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG002 hoist-if-operators`
 
-#### do / don't
+#### LEG002 example diff
 
 ```diff
 - if user and user.is_active and not user.is_locked:
@@ -115,7 +87,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG003 max-control-flow-depth`
 
-#### do / don't
+#### LEG003 example diff
 
 ```diff
 - if user:
@@ -134,7 +106,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG004 no-complex-ternary`
 
-#### do / don't
+#### LEG004 example diff
 
 ```diff
 - label = "owner" if user.is_owner else "admin" if user.is_admin else "member"
@@ -150,7 +122,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG005 no-quadratic-patterns`
 
-#### do / don't
+#### LEG005 example diff
 
 ```diff
 - for user in users:
@@ -168,7 +140,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG006 no-redundant-boolean-logic`
 
-#### do / don't
+#### LEG006 example diff
 
 ```diff
 - return True if flag == True else False
@@ -179,7 +151,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG007 prefer-positive-condition-names`
 
-#### do / don't
+#### LEG007 example diff
 
 ```diff
 - is_not_ready = status != "ready"
@@ -193,7 +165,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG008 no-trivial-wrapper-functions`
 
-#### do / don't
+#### LEG008 example diff
 
 ```diff
 - def normalize(value):
@@ -206,7 +178,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG009 prefer-early-return`
 
-#### do / don't
+#### LEG009 example diff
 
 ```diff
 - if not user:
@@ -222,7 +194,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG010 prefer-guard-clauses`
 
-#### do / don't
+#### LEG010 example diff
 
 ```diff
 - if user:
@@ -238,7 +210,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG011 max-array-chain-depth`
 
-#### do / don't
+#### LEG011 example diff
 
 ```diff
 - users = query.filter(active=True).order_by("name").limit(10)
@@ -251,7 +223,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG012 no-computed-values`
 
-#### do / don't
+#### LEG012 example diff
 
 ```diff
 - return total + tax - discount
@@ -263,7 +235,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG013 no-hidden-side-effects`
 
-#### do / don't
+#### LEG013 example diff
 
 ```diff
 - return cache.setdefault(key, build_value())
@@ -276,7 +248,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG014 no-standalone-array-mutations`
 
-#### do / don't
+#### LEG014 example diff
 
 ```diff
 - items.append(item)
@@ -288,7 +260,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG015 prefer-concat-object-assign`
 
-#### do / don't
+#### LEG015 example diff
 
 ```diff
 - payload = {**base_payload, "id": user_id}
@@ -299,7 +271,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG016 require-executable-shebang`
 
-#### do / don't
+#### LEG016 example diff
 
 ```diff
 - # scripts/report.py
@@ -312,7 +284,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG017 no-direct-python-bin-smoke`
 
-#### do / don't
+#### LEG017 example diff
 
 ```diff
 - subprocess.run(["python", "src/example/cli.py", "--help"], check=True)
@@ -323,7 +295,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG018 no-repeated-collection-search`
 
-#### do / don't
+#### LEG018 example diff
 
 ```diff
 - if user_id in ids and owner_id in ids:
@@ -337,7 +309,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG019 no-single-use-renaming-alias`
 
-#### do / don't
+#### LEG019 example diff
 
 ```diff
 - current_user = request.user
@@ -349,7 +321,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG020 no-unnecessary-lambda`
 
-#### do / don't
+#### LEG020 example diff
 
 ```diff
 - users = sorted(users, key=lambda user: normalize(user))
@@ -360,7 +332,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG021 prefer-flat-comprehension`
 
-#### do / don't
+#### LEG021 example diff
 
 ```diff
 - values = list(chain.from_iterable(map(expand, items)))
@@ -371,7 +343,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG022 no-identity-array-callback`
 
-#### do / don't
+#### LEG022 example diff
 
 ```diff
 - names = list(map(lambda name: name, names))
@@ -382,7 +354,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG023 no-redundant-none-fallback`
 
-#### do / don't
+#### LEG023 example diff
 
 ```diff
 - return value if value is not None else None
@@ -393,7 +365,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG024 prefer-object-lookup`
 
-#### do / don't
+#### LEG024 example diff
 
 ```diff
 - if status == "new" or status == "open" or status == "pending":
@@ -406,7 +378,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG025 require-filename-matches-dirname`
 
-#### do / don't
+#### LEG025 example diff
 
 ```diff
 - src/billing/customer/profile.py
@@ -417,7 +389,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG026 no-mixed-filename-casing`
 
-#### do / don't
+#### LEG026 example diff
 
 ```diff
 - user_Profile.py
@@ -428,7 +400,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG027 no-identity-comprehension`
 
-#### do / don't
+#### LEG027 example diff
 
 ```diff
 - copied = [item for item in items]
@@ -439,7 +411,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG028 prefer-comprehension-over-map-filter`
 
-#### do / don't
+#### LEG028 example diff
 
 ```diff
 - names = list(map(lambda user: user.name, users))
@@ -450,7 +422,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG029 no-loop-append-comprehension`
 
-#### do / don't
+#### LEG029 example diff
 
 ```diff
 - names = []
@@ -463,7 +435,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG030 no-repeated-comprehension-filter`
 
-#### do / don't
+#### LEG030 example diff
 
 ```diff
 - active_users = [user for user in users if user.active]
@@ -477,7 +449,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG031 no-deep-subscript-chain`
 
-#### do / don't
+#### LEG031 example diff
 
 ```diff
 - return payload["user"]["profile"]["email"]
@@ -490,7 +462,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG032 prefer-named-exception-context`
 
-#### do / don't
+#### LEG032 example diff
 
 ```diff
 - except Exception as error:
@@ -504,7 +476,7 @@ Removed lines are don'ts. Added lines are dos.
 
 ### `LEG033 no-boolean-parameter-name-drift`
 
-#### do / don't
+#### LEG033 example diff
 
 ```diff
 - is_ready = status != "ready"
@@ -517,7 +489,7 @@ Removed lines are don'ts. Added lines are dos.
 
 `LEG034` checks standalone and trailing inline `#` comments.
 
-#### Unmatched standalone and inline comments
+#### LEG034 example diffs
 
 Fails with two diagnostics:
 
@@ -534,7 +506,7 @@ Fix:
 + total_dollars = cents / 100
 ```
 
-#### Setup
+#### LEG034 setup
 
 ```toml
 [tool.ruff-legibility]
@@ -692,81 +664,57 @@ Encoding cookies must occupy a comment-only line:
 
 ## Recipes
 
-| Context | Scope | Enforcement |
+<!-- recipe commands exercised by tests/e2es/Dockerfile.*, scripts/test_e2es.sh, src/ruff_legibility/cli.py, and pyproject.toml -->
+
+Use the same committed [comment ownership configuration](#leg034-setup) in every
+context. Change only the scope and when a diagnostic blocks work.
+
+| Context | Why | How |
 | --- | --- | --- |
-| Agent | Edited Python files | blocking |
-| Human, while editing | Current file or package | `--exit-zero` |
-| Human, before commit | Changed Python files | blocking |
-| Pre-commit | Staged Python files | blocking |
-| CI | Repository | blocking |
+| Agent | Agents can produce redundant comments at scale. | Block every edited Python file. |
+| Human | A hard failure on every save interrupts editing. | Warn while editing; block before commit. |
+| CI | Local checks can be skipped or narrowly scoped. | Block the whole repository. |
 
-Use the same committed configuration in every context.
+Run the tested Docker examples with `make test-e2e`.
 
-### Agent: check edited files
+### Agent: block edited files
 
-Setup:
+Why: an agent should remove narration it introduced, not disguise it with an
+ownership marker. Existing human-owned comments remain untouched.
+
+How: install the shared skill once, give the agent the policy, and make its
+edited-file check blocking.
 
 ```sh
 ruff-legibility install-skill --target auto
 ```
 
-Prompt:
-
 ```text
-Use $ruff-legibility on every Python file you edit. Fix diagnostics introduced
-by this task. Remove comments you add when LEG034 reports them. Do not add
-ownership markers, matchers, or noqa suppressions.
+Use $ruff-legibility on every Python file you edit. Remove unmatched comments
+you add. Do not add ownership markers, matchers, or noqa suppressions.
 ```
-
-Edit loop:
 
 ```sh
 ruff check src/package/changed.py
 ruff-legibility check src/package/changed.py
 ```
 
-Fix the code instead of disguising an agent comment as human-owned:
-
-```diff
- def subtotal(balances):
--    # HUMAN: Add every active balance.
-     return sum(balance for balance in balances if balance.active)
-```
-
-Keep existing human-owned comments unchanged:
-
-```python
-# HUMAN: This order is part of the provider contract.
-send(primary)
-send(fallback)
-```
+[Tested agent example](tests/e2es/Dockerfile.agent)
 
 ### Human: warn while editing, block before commit
 
+Why: advisory output keeps the policy visible without breaking the edit loop.
+The blocking check keeps unmatched comments out of commits.
+
+How: use `--exit-zero` while editing, then remove it for the changed-file gate.
+
 ```sh
-ruff-legibility check src/package --exit-zero
+ruff-legibility check src/package --select LEG034 --exit-zero
 ruff-legibility check src/package/changed.py
 ```
 
-Keep intentional context with a configured ownership identifier:
-
-```python
-def send_batch():
-    # HUMAN: The provider contract requires primary before fallback.
-    # Reversing these calls can duplicate deliveries.
-    send(primary)
-    send(fallback)
-```
-
-Suppress an isolated false positive on its diagnostic line:
-
-```python
-value = legacy_loader()  # noqa: LEG034
-```
-
-### Pre-commit: block staged Python files
-
-`pre-commit` appends the staged filenames:
+`pre-commit` can install the pinned package and pass staged Python filenames to
+the blocking command:
 
 ```yaml
 repos:
@@ -775,26 +723,69 @@ repos:
       - id: ruff-legibility
         name: ruff-legibility
         entry: ruff-legibility check
-        language: system
+        language: python
+        additional_dependencies:
+          - ruff-legibility==0.4.0
         types: [python]
 ```
 
+[Tested human example](tests/e2es/Dockerfile.human)
+
 ### CI: block the repository
+
+Why: CI is the backstop for skipped hooks, partial local checks, and files
+changed outside the normal edit loop.
+
+How: install from the lockfile, run both linters across the repository, and use
+GitHub annotations for review visibility.
 
 ```yaml
 - run: uv sync --locked --all-groups
-- run: uv run ruff check .
-- run: uv run ruff-legibility check . --output-format github
+- run: uv run --locked ruff check .
+- run: uv run --locked ruff-legibility check . --output-format github
 ```
+
+[Tested CI example](tests/e2es/Dockerfile.ci)
 
 ### Existing codebase: warn, fix, then block
 
-```sh
-# Inventory without blocking.
-ruff-legibility check . --exit-zero
+Why: a new gate should not stop unrelated work because of an existing comment
+baseline.
 
-# After tuning configuration and fixing the baseline, block locally and in CI.
+How: inventory `LEG034` without blocking, tune the ownership configuration,
+fix the baseline, then remove `--exit-zero`.
+
+```sh
+ruff-legibility check . --select LEG034 --exit-zero
+ruff-legibility check . --select LEG034
+```
+
+## Install
+
+```sh
+pip install ruff-legibility
+```
+
+For local development:
+
+```sh
+uv sync --all-groups
+make check
+```
+
+## Usage
+
+Run it beside Ruff:
+
+```sh
+ruff check .
 ruff-legibility check .
+```
+
+```sh
+ruff-legibility check src tests --output-format json
+ruff-legibility check . --select LEG001,LEG002 --ignore LEG007
+ruff-legibility check . --exit-zero
 ```
 
 ## Agent Skill

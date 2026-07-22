@@ -1,0 +1,14 @@
+ARG BASE_IMAGE=ruff-legibility-e2e:base
+FROM ${BASE_IMAGE}
+
+WORKDIR /workspace
+COPY tests/e2es/ruff-legibility.toml .
+COPY tests/e2es/fixtures/agent ./src
+
+RUN ruff-legibility install-skill --path /tmp/skills \
+    && test -f /tmp/skills/ruff-legibility/SKILL.md
+RUN status=0; \
+    ruff-legibility check src/unmatched.py --select LEG034 || status=$?; \
+    test "$status" -eq 1
+RUN ruff-legibility check src/fixed.py src/human_owned.py --select LEG034
+
