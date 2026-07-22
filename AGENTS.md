@@ -18,7 +18,6 @@ the user.
 - Add positive and negative tests for rule changes.
 - Update README rule tables/examples when rule codes, messages, or behavior
   changes.
-- Update `CHANGELOG.md` for user-facing changes.
 - Keep generated build artifacts out of changes.
 
 ## Validation
@@ -27,7 +26,7 @@ Run the narrowest useful check first, then broaden when behavior changed:
 
 ```sh
 uv run ruff check .
-uv run ruff-legibility check src tests
+uv run ruff-legibility check src tests scripts
 uv run pytest
 uv build
 ```
@@ -43,6 +42,13 @@ make check
 Use `.agents/skills/ruff-legibility/SKILL.md` as the shared Claude/Codex skill
 when another agent should run the ruff-legibility feedback loop or maintain this
 project. Do not duplicate the workflow in tool-specific rules.
+
+Edit `scripts/agent/templates/ruff-legibility`, then regenerate the tracked
+skill copies with:
+
+```sh
+uv run python -m scripts.agent.build --target package,agents
+```
 
 Installed packages can copy the same skill into a local agent skill root with:
 

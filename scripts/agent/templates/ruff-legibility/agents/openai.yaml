@@ -1,0 +1,6 @@
+interface:
+  display_name: "Ruff Legibility"
+  short_description: "Run and maintain ruff-legibility loops"
+  default_prompt: >
+    Use $ruff-legibility to check Python readability and iterate on LEG
+    diagnostics.
