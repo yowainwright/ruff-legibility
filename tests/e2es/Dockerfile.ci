@@ -1,0 +1,16 @@
+ARG BASE_IMAGE=ruff-legibility-e2e:base
+FROM ${BASE_IMAGE}
+
+WORKDIR /workspace
+COPY tests/e2es/ruff-legibility.toml .
+COPY tests/e2es/fixtures/ci/failing.py ./src/example.py
+
+RUN status=0; \
+    output="$(ruff-legibility check . --output-format github)" || status=$?; \
+    test "$status" -eq 1; \
+    printf '%s\n' "$output" | grep -q '^::warning file=src/example.py,line=1,col=' \
+    && printf '%s\n' "$output" | grep -q 'LEG034'
+
+COPY tests/e2es/fixtures/ci/passing.py ./src/example.py
+RUN ruff-legibility check . --output-format github
+

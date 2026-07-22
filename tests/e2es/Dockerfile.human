@@ -1,0 +1,16 @@
+ARG BASE_IMAGE=ruff-legibility-e2e:base
+FROM ${BASE_IMAGE}
+
+WORKDIR /workspace
+COPY tests/e2es/ruff-legibility.toml .
+COPY tests/e2es/fixtures/human/draft.py ./src/example.py
+
+RUN ruff-legibility check src/example.py --select LEG034 --exit-zero --output-format json \
+    | grep -q '"code": "LEG034"'
+RUN status=0; \
+    ruff-legibility check src/example.py --select LEG034 || status=$?; \
+    test "$status" -eq 1
+
+COPY tests/e2es/fixtures/human/ready.py ./src/example.py
+RUN ruff-legibility check src/example.py
+

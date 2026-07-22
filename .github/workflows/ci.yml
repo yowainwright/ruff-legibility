@@ -61,3 +61,14 @@ jobs:
         run: uv run --no-sync pytest
       - name: Build
         run: uv build --no-sources
+
+  e2e:
+    name: recipe E2Es
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Build recipe examples
+        run: make test-e2e

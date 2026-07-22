@@ -1,5 +1,5 @@
 .PHONY: build build-agent check check-agent clean format lint
-.PHONY: test test-python test-scripts
+.PHONY: test test-e2e test-python test-scripts
 
 check: check-agent lint test build
 
@@ -20,6 +20,9 @@ test-python:
 
 test-scripts:
 	./scripts/test_setup.sh
+
+test-e2e:
+	./scripts/test_e2es.sh
 
 build: build-agent
 	uv build

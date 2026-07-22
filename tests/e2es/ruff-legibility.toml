@@ -1,0 +1,5 @@
+select = ["LEG"]
+comment-matchers = ['\b(ENG|OPS)-\d+\b']
+comment-prefix-identifiers = ["HUMAN", "LEGAL"]
+comment-suffix-identifiers = ["@owned"]
+
