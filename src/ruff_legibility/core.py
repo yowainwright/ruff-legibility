@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import tokenize
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,7 +36,8 @@ class Diagnostic:
 
 
 def check_path(path: Path, settings: Settings) -> list[Diagnostic]:
-    source = path.read_text(encoding="utf-8")
+    with tokenize.open(path) as source_file:
+        source = source_file.read()
     return check_source(source, path=path, settings=settings)
 
 
@@ -80,6 +82,7 @@ def _has_syntax_error(diagnostics: list[Diagnostic]) -> bool:
 
 def discover_python_files(paths: Iterable[Path], settings: Settings) -> list[Path]:
     path_list = list(paths)
+    _validate_paths_exist(path_list)
     files = [path for path in path_list if _is_included_python_file(path, settings)]
     directory_files = [
         candidate
@@ -89,6 +92,12 @@ def discover_python_files(paths: Iterable[Path], settings: Settings) -> list[Pat
     ]
 
     return sorted(set(files + directory_files))
+
+
+def _validate_paths_exist(paths: list[Path]) -> None:
+    for path in paths:
+        if not path.exists():
+            raise ValueError(f"path does not exist: {path}")
 
 
 def _discover_directory_python_files(path: Path, settings: Settings) -> list[Path]:

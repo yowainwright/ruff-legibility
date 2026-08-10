@@ -37,6 +37,30 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
 
+    def test_cli_rejects_missing_path(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            exit_code = main(["check", "definitely-does-not-exist", "--output-format", "json"])
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("path does not exist: definitely-does-not-exist", stderr.getvalue())
+
+    def test_cli_honors_python_encoding_cookie(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "latin1.py"
+            path.write_bytes(b"# coding: latin-1\nlabel = 'caf\xe9'\nflag = value == True\n")
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                exit_code = main(["check", str(path), "--output-format", "json"])
+
+            output = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 1)
+            self.assertIn("LEG006", [item["code"] for item in output])
+
     def test_cli_rules(self) -> None:
         stdout = io.StringIO()
         with redirect_stdout(stdout):

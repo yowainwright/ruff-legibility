@@ -33,6 +33,7 @@ jobs:
     env:
       CARGO_HTTP_MULTIPLEXING: "false"
       CARGO_NET_RETRY: "10"
+      RUFF_LEGIBILITY_NATIVE: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -52,11 +53,30 @@ jobs:
       - name: Install Python
         run: uv python install ${{ matrix.python-version }}
       - name: Install dependencies
-        run: uv sync --locked --all-groups --no-install-project
+        run: uv sync --locked --all-groups
+      - name: Verify native backend
+        run: |
+          uv run --no-sync python -c "from ruff_legibility import _native"
       - name: Lint
         run: uv run --no-sync ruff check .
       - name: Legibility self-check
-        run: PYTHONPATH=src uv run --no-sync python -m ruff_legibility check src tests
+        run: |
+          uv run --no-sync ruff-legibility check \
+            src tests scripts \
+            --output-format github
+      - name: Export legibility report
+        if: always()
+        run: |
+          uv run --no-sync ruff-legibility check \
+            src tests scripts \
+            --output-format json \
+            --exit-zero > ruff-legibility.json
+      - name: Upload legibility report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: legibility-${{ matrix.python-version }}
+          path: ruff-legibility.json
       - name: Test
         run: uv run --no-sync pytest
       - name: Build

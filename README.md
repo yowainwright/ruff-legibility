@@ -906,9 +906,9 @@ Local release artifact checks should use:
 uv build --no-sources
 ```
 
-Tagged releases are published by GitHub Actions. The workflow builds a Python
-3.11+ `abi3` manylinux wheel so supported CPython versions can install without
-building from source.
+Tagged releases are published by GitHub Actions. The workflow builds an sdist
+and Python 3.11+ `abi3` wheels for Linux x86-64, macOS x86-64 and arm64, and
+Windows x86-64. Each wheel installs without building from source.
 
 Publishing is configured for PyPI Trusted Publishing:
 

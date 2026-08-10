@@ -4,8 +4,8 @@ use ruff_python_ast::{
     StmtFunctionDef, UnaryOp,
 };
 use ruff_python_parser::parse_module;
-use ruff_source_file::SourceFileBuilder;
-use ruff_text_size::Ranged;
+use ruff_source_file::{SourceFile, SourceFileBuilder};
+use ruff_text_size::{Ranged, TextRange};
 use serde::{Deserialize, Serialize};
 
 type JsonResult = PyResult<String>;
@@ -95,7 +95,8 @@ fn parse_source(source: &str, path: &str) -> ModuleResult {
         Ok(parsed) => Ok(parsed.into_syntax()),
         Err(error) => {
             let message = format!("SyntaxError: {error}");
-            let diagnostic = diagnostic_at_start(path, "LEG999", message);
+            let source_file = SourceFileBuilder::new(path.to_owned(), source.to_owned()).finish();
+            let diagnostic = diagnostic_for_range(&source_file, error.range(), "LEG999", message);
             match serde_json::to_string(&[diagnostic]) {
                 Ok(json) => Err(json),
                 Err(error) => Err(error.to_string()),
@@ -104,13 +105,21 @@ fn parse_source(source: &str, path: &str) -> ModuleResult {
     }
 }
 
-fn diagnostic_at_start(path: &str, code: &'static str, message: String) -> Diagnostic {
+fn diagnostic_for_range(
+    source_file: &SourceFile,
+    range: TextRange,
+    code: &'static str,
+    message: String,
+) -> Diagnostic {
+    let source_code = source_file.to_source_code();
+    let start = source_code.line_column(range.start());
+    let end = source_code.line_column(range.end());
     Diagnostic {
-        filename: path.to_owned(),
-        line: 1,
-        column: 1,
-        end_line: 1,
-        end_column: 1,
+        filename: source_file.name().to_owned(),
+        line: start.line.get(),
+        column: start.column.get(),
+        end_line: end.line.get(),
+        end_column: end.column.get(),
         code,
         message,
     }
