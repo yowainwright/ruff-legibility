@@ -37,6 +37,82 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
 
+    def test_cli_rejects_missing_path(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            exit_code = main(["check", "definitely-does-not-exist", "--output-format", "json"])
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("path does not exist: definitely-does-not-exist", stderr.getvalue())
+
+    def test_cli_honors_python_encoding_cookie(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "latin1.py"
+            path.write_bytes(b"# coding: latin-1\nlabel = 'caf\xe9'\nflag = value == True\n")
+            stdout = io.StringIO()
+
+            with redirect_stdout(stdout):
+                exit_code = main(["check", str(path), "--output-format", "json"])
+
+            output = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 1)
+            self.assertIn("LEG006", [item["code"] for item in output])
+
+    def test_cli_reports_unknown_encoding_as_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "unknown_encoding.py"
+            path.write_bytes(b"# coding: definitely-not-an-encoding\nvalue = 1\n")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            command = ["check", str(path), "--output-format", "json"]
+
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(command)
+
+            output = json.loads(stdout.getvalue())
+            diagnostic = output[0]
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(stderr.getvalue(), "")
+            self.assertEqual(diagnostic["code"], "LEG999")
+            self.assertIn("unknown encoding", diagnostic["message"])
+
+    def test_cli_reports_undecodable_source_as_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "invalid_utf8.py"
+            path.write_bytes(b"# coding: utf-8\nvalue = 'caf\xff'\n")
+            stdout = io.StringIO()
+            command = ["check", str(path), "--output-format", "json"]
+
+            with redirect_stdout(stdout):
+                exit_code = main(command)
+
+            output = json.loads(stdout.getvalue())
+            diagnostic = output[0]
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(diagnostic["code"], "LEG999")
+            self.assertIn("UnicodeDecodeError", diagnostic["message"])
+
+    def test_cli_rejects_invalid_comment_matcher(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "example.py"
+            config = root / "ruff-legibility.toml"
+            path.write_text("value = 1\n")
+            config.write_text("comment-matchers = ['[']\n")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            command = ["check", str(path), "--config", str(config)]
+
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(command)
+
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertIn("Invalid comment matcher", stderr.getvalue())
+
     def test_cli_rules(self) -> None:
         stdout = io.StringIO()
         with redirect_stdout(stdout):

@@ -17,6 +17,7 @@ from .rules import (
     DEFAULT_EXECUTABLE_RUNTIMES,
     DEFAULT_SELECT,
     RULES,
+    validate_comment_matchers,
 )
 
 DEFAULT_EXCLUDE = (
@@ -244,6 +245,7 @@ def apply_config(settings: Settings, table: dict[str, Any]) -> Settings:
 
     validate_selectors(updates.get("select", settings.select))
     validate_selectors(updates.get("ignore", settings.ignore))
+    validate_comment_matchers(updates.get("comment_matchers", settings.comment_matchers))
 
     return replace(settings, **updates)
 

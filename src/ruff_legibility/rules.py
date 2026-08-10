@@ -245,7 +245,11 @@ DEFAULT_DIRECT_BIN_ENTRY_PATTERNS = (
 )
 DEFAULT_EXECUTABLE_ENTRY_PATTERNS = ("bin/*.py", "scripts/*.py")
 DEFAULT_EXECUTABLE_RUNTIMES = ("python", "python3")
-DEFAULT_COMMENT_MATCHERS: tuple[str, ...] = ()
+DEFAULT_COMMENT_MATCHERS = (
+    r"^\s*(?:noqa\b|type:\s*|ruff:\s*noqa\b)",
+    r"^\s*(?:fmt|isort):\s*(?:on|off|skip)\b",
+    r"^\s*pragma:\s*no cover\b",
+)
 DEFAULT_COMMENT_PREFIX_IDENTIFIERS: tuple[str, ...] = ()
 DEFAULT_COMMENT_SUFFIX_IDENTIFIERS: tuple[str, ...] = ()
 
@@ -342,6 +346,7 @@ class LegibilityVisitor(ast.NodeVisitor):
         self.diagnostics: list[Diagnostic] = []
         self.control_depth = 0
         self.loop_depth = 0
+        self.loop_depth_stack: tuple[int, ...] = ()
         self.comprehension_depth = 0
         self.alias_scopes: list[AliasScope] = []
         self.subprocess_module_names: set[str] = set()
@@ -483,18 +488,30 @@ class LegibilityVisitor(ast.NodeVisitor):
         self._check_name(node.name, node)
         self._check_trivial_wrapper_function(node)
         self._check_guard_clause(node)
-        self._enter_alias_scope()
-        self._check_statement_pairs(node.body)
-        self.generic_visit(node)
-        self._leave_alias_scope()
+        self._visit_function_scope(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._check_name(node.name, node)
         self._check_guard_clause(node)
+        self._visit_function_scope(node)
+
+    def _visit_function_scope(self, node: FunctionNode) -> None:
         self._enter_alias_scope()
         self._check_statement_pairs(node.body)
-        self.generic_visit(node)
+        self.visit(node.args)
+        self._visit_function_body(node.body)
+        self._visit_many(node.decorator_list)
+        if node.returns is not None:
+            self.visit(node.returns)
+        self._visit_many(getattr(node, "type_params", ()))
         self._leave_alias_scope()
+
+    def _visit_function_body(self, body: Iterable[ast.stmt]) -> None:
+        self.loop_depth_stack += (self.loop_depth,)
+        self.loop_depth = 0
+        self._visit_many(body)
+        self.loop_depth = self.loop_depth_stack[-1]
+        self.loop_depth_stack = self.loop_depth_stack[:-1]
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
         self._check_unnecessary_lambda(node)
@@ -1157,19 +1174,20 @@ class LegibilityVisitor(ast.NodeVisitor):
             return
 
         matchers = _compile_comment_matchers(self.settings.comment_matchers)
+        default_matchers = _compile_comment_matchers(DEFAULT_COMMENT_MATCHERS)
         allowed_comments: tuple[SourceComment, ...] = ()
         for comment in _source_comments(self.source):
             is_allowed = _is_allowed_comment(comment.value, matchers, self.settings)
             if is_allowed:
-                allowed_comments = allowed_comments + (comment,)
+                is_tool_directive = _matches_comment_pattern(comment.value, default_matchers)
+                if not is_tool_directive:
+                    allowed_comments = allowed_comments + (comment,)
                 continue
             self._add_unmatched_comments(comment)
         self._check_stacked_comments(node, allowed_comments)
 
     def _add_unmatched_comments(self, comment: SourceComment) -> None:
-        for token in comment.tokens:
-            unmatched_comment = _source_comment((token,))
-            self._add_comment(unmatched_comment)
+        self._add_comment(comment)
 
     def _check_stacked_comments(
         self,
@@ -1542,17 +1560,18 @@ def _function_end_line(node: FunctionNode) -> int:
 
 
 def _compile_comment_matchers(sources: tuple[str, ...]) -> tuple[re.Pattern[str], ...]:
-    candidates = (_compile_comment_matcher(source) for source in sources)
-    matchers = tuple(candidate for candidate in candidates if candidate is not None)
-    return matchers
+    return tuple(_compile_comment_matcher(source) for source in sources)
 
 
-def _compile_comment_matcher(source: str) -> re.Pattern[str] | None:
+def _compile_comment_matcher(source: str) -> re.Pattern[str]:
     try:
-        matcher = re.compile(source, re.IGNORECASE)
-    except (re.error, OverflowError):
-        return None
-    return matcher
+        return re.compile(source, re.IGNORECASE)
+    except (re.error, OverflowError) as error:
+        raise ValueError(f"Invalid comment matcher {source!r}: {error}") from error
+
+
+def validate_comment_matchers(sources: tuple[str, ...]) -> None:
+    _compile_comment_matchers(sources)
 
 
 def _is_allowed_comment(
@@ -1560,11 +1579,15 @@ def _is_allowed_comment(
     matchers: tuple[re.Pattern[str], ...],
     settings: Settings,
 ) -> bool:
-    matches_pattern = any(matcher.search(value) for matcher in matchers)
+    matches_pattern = _matches_comment_pattern(value, matchers)
     if matches_pattern:
         return True
 
     return _matches_comment_identifier(value, settings)
+
+
+def _matches_comment_pattern(value: str, matchers: tuple[re.Pattern[str], ...]) -> bool:
+    return any(matcher.search(value) for matcher in matchers)
 
 
 def _matches_comment_identifier(value: str, settings: Settings) -> bool:

@@ -8,18 +8,15 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_HTTP_MULTIPLEXING: "false"
+  CARGO_NET_RETRY: "10"
+
 jobs:
-  publish:
+  quality:
     runs-on: ubuntu-latest
     env:
-      CARGO_HTTP_MULTIPLEXING: "false"
-      CARGO_NET_RETRY: "10"
-    environment:
-      name: pypi
-      url: https://pypi.org/project/ruff-legibility/
-    permissions:
-      contents: write
-      id-token: write
+      RUFF_LEGIBILITY_NATIVE: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -32,47 +29,191 @@ jobs:
           python-version: "3.11"
           enable-cache: true
       - name: Install Python
-        run: uv python install 3.11
+        run: |
+          uv python install 3.11
       - name: Install dependencies
-        run: uv sync --locked --all-groups
+        run: |
+          uv sync --locked --all-groups
       - name: Lint
-        run: make lint
+        run: |
+          make lint
       - name: Test
-        run: make test
-      - name: Build release artifacts
+        run: |
+          make test
+
+  build-wheels:
+    name: wheel ${{ matrix.name }}
+    needs: quality
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86-64
+            runner: ubuntu-latest
+            target: x86_64
+            interpreter: python3.11
+            smoke-python: smoke-venv/bin/python
+            smoke-cli: smoke-venv/bin/ruff-legibility
+          - name: macos-x86-64
+            runner: macos-15-intel
+            target: x86_64
+            interpreter: python
+            smoke-python: smoke-venv/bin/python
+            smoke-cli: smoke-venv/bin/ruff-legibility
+          - name: macos-arm64
+            runner: macos-15
+            target: aarch64
+            interpreter: python
+            smoke-python: smoke-venv/bin/python
+            smoke-cli: smoke-venv/bin/ruff-legibility
+          - name: windows-x86-64
+            runner: windows-latest
+            target: x64
+            interpreter: python
+            smoke-python: smoke-venv/Scripts/python.exe
+            smoke-cli: smoke-venv/Scripts/ruff-legibility.exe
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.7.19"
+          python-version: "3.11"
+          enable-cache: true
+      - name: Install Python
+        run: |
+          uv python install 3.11
+      - name: Build wheel
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
         with:
           command: build
           maturin-version: "1.14.1"
+          target: ${{ matrix.target }}
           manylinux: "2014"
           args: >-
             --release
-            --sdist
             --out dist
-            --interpreter python3.11
+            --interpreter ${{ matrix.interpreter }}
+      - name: Smoke-test wheel
+        env:
+          RUFF_LEGIBILITY_NATIVE: "1"
+        shell: bash
+        run: |
+          uv venv --python 3.11 smoke-venv
+          uv pip install \
+            --python ${{ matrix.smoke-python }} \
+            --no-index \
+            --find-links dist \
+            ruff-legibility
+          ${{ matrix.smoke-cli }} --version
+          ${{ matrix.smoke-cli }} rules
+          ${{ matrix.smoke-cli }} install-skill --path smoke-skills
+          ${{ matrix.smoke-python }} -c "from ruff_legibility import _native"
+          ${{ matrix.smoke-cli }} check src tests scripts
+      - name: Upload wheel
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: wheel-${{ matrix.name }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  build-sdist:
+    name: source distribution
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.7.19"
+          python-version: "3.11"
+          enable-cache: true
+      - name: Install Python
+        run: |
+          uv python install 3.11
+      - name: Build source distribution
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          command: sdist
+          maturin-version: "1.14.1"
+          args: >-
+            --out dist
+      - name: Smoke-test source distribution
+        env:
+          RUFF_LEGIBILITY_NATIVE: "1"
+        run: |
+          uv venv --python 3.11 smoke-venv
+          uv pip install --python smoke-venv/bin/python dist/*.tar.gz
+          smoke-venv/bin/ruff-legibility --version
+          smoke-venv/bin/ruff-legibility install-skill --path smoke-skills
+          smoke-venv/bin/python -c "from ruff_legibility import _native"
+      - name: Upload source distribution
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs:
+      - build-wheels
+      - build-sdist
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ruff-legibility/
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Setup uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.7.19"
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: dist
+          pattern: "*"
+          merge-multiple: true
       - name: Check release artifacts
         run: |
           ls -lh dist
           test -f dist/ruff_legibility-*.tar.gz
+          test "$(find dist -name '*.whl' | wc -l)" -eq 4
 
-          if ! compgen -G "dist/*cp311-abi3*manylinux*.whl" > /dev/null; then
-            echo "Expected a Python 3.11+ abi3 manylinux wheel in dist." >&2
-            exit 1
-          fi
+          for wheel in dist/*.whl; do
+            if [[ "$wheel" != *-cp311-abi3-* ]]; then
+              echo "Expected a Python 3.11+ abi3 wheel: $wheel" >&2
+              exit 1
+            fi
 
-          if compgen -G "dist/*-cp3??-cp3??-manylinux*.whl" > /dev/null; then
-            echo "Expected abi3 wheels, not a single-interpreter CPython wheel." >&2
-            exit 1
-          fi
+            if unzip -Z1 "$wheel" | grep -q '^tests/'; then
+              echo "Wheel contains the top-level tests package: $wheel" >&2
+              exit 1
+            fi
+          done
 
-          if compgen -G "dist/*-linux_*.whl" > /dev/null; then
-            echo "Native linux wheels are not publishable to PyPI." >&2
-            exit 1
-          fi
+          compgen -G "dist/*manylinux*x86_64.whl" > /dev/null
+          compgen -G "dist/*macosx*x86_64.whl" > /dev/null
+          compgen -G "dist/*macosx*arm64.whl" > /dev/null
+          compgen -G "dist/*win_amd64.whl" > /dev/null
       - name: Publish to PyPI
-        run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/
+        run: |
+          uv publish dist/* \
+            --trusted-publishing always \
+            --check-url https://pypi.org/simple/
       - name: Publish GitHub release assets
         env:
+          GH_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ github.token }}
           VERSION: ${{ github.ref_name }}
         run: |

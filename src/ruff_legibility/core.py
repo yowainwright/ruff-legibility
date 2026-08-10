@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import tokenize
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,8 +36,31 @@ class Diagnostic:
 
 
 def check_path(path: Path, settings: Settings) -> list[Diagnostic]:
-    source = path.read_text(encoding="utf-8")
+    try:
+        source = _read_source(path)
+    except (SyntaxError, UnicodeError) as error:
+        return _source_read_diagnostics(path, error, settings)
+
     return check_source(source, path=path, settings=settings)
+
+
+def _read_source(path: Path) -> str:
+    with tokenize.open(path) as source_file:
+        return source_file.read()
+
+
+def _source_read_diagnostics(
+    path: Path,
+    error: SyntaxError | UnicodeError,
+    settings: Settings,
+) -> list[Diagnostic]:
+    if settings.ignored_for_path("LEG999", path):
+        return []
+
+    error_name = type(error).__name__
+    message = f"{error_name}: {error}"
+    diagnostic = Diagnostic(path=path, line=1, column=1, code="LEG999", message=message)
+    return [diagnostic]
 
 
 def check_source(source: str, *, path: Path, settings: Settings) -> list[Diagnostic]:
@@ -80,6 +104,7 @@ def _has_syntax_error(diagnostics: list[Diagnostic]) -> bool:
 
 def discover_python_files(paths: Iterable[Path], settings: Settings) -> list[Path]:
     path_list = list(paths)
+    _validate_paths_exist(path_list)
     files = [path for path in path_list if _is_included_python_file(path, settings)]
     directory_files = [
         candidate
@@ -89,6 +114,12 @@ def discover_python_files(paths: Iterable[Path], settings: Settings) -> list[Pat
     ]
 
     return sorted(set(files + directory_files))
+
+
+def _validate_paths_exist(paths: list[Path]) -> None:
+    for path in paths:
+        if not path.exists():
+            raise ValueError(f"path does not exist: {path}")
 
 
 def _discover_directory_python_files(path: Path, settings: Settings) -> list[Path]:

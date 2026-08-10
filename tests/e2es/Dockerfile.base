@@ -16,3 +16,5 @@ ENV PATH="/opt/venv/bin:${PATH}"
 WORKDIR /source
 COPY . .
 RUN pip install --no-cache-dir .
+ENV RUFF_LEGIBILITY_NATIVE=1
+RUN python -c "from ruff_legibility import _native"

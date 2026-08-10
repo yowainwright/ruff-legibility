@@ -508,6 +508,12 @@ Fix:
 
 #### LEG034 setup
 
+By default, `LEG034` allows common tool directives: `noqa`, `type:`,
+`ruff: noqa`, `fmt:`, `isort:`, and `pragma: no cover`. These directives do
+not count toward the one-comment-per-function limit. Setting
+`comment-matchers` replaces those defaults, so include them when adding
+project-specific patterns:
+
 ```toml
 [tool.ruff-legibility]
 comment-matchers = [
@@ -522,11 +528,13 @@ comment-suffix-identifiers = ["@owned"]
 
 | Setting | Allows the comment | Exempt from one-comment-per-function limit |
 | --- | --- | --- |
-| `comment-matchers` | Regex matches | no |
+| `comment-matchers` | Regex matches | only default tool directives |
 | `comment-prefix-identifiers` | Block starts with identifier | yes |
 | `comment-suffix-identifiers` | Block ends with identifier | yes |
 
 Matching is case-insensitive and ignores the leading `#`.
+Adjacent standalone comments form one block and produce at most one diagnostic
+spanning the block. A `# noqa: LEG034` on the first line suppresses that block.
 
 #### Regex-matched comments
 
@@ -863,7 +871,11 @@ max-control-flow-depth = 3
 max-array-chain-depth = 2
 min-object-lookup-chain-length = 3
 min-dirname-match-depth = 3
-comment-matchers = []
+comment-matchers = [
+  '^\s*(noqa\b|type:\s*|ruff:\s*noqa\b)',
+  '^\s*(fmt|isort):\s*(on|off|skip)\b',
+  '^\s*pragma:\s*no cover\b',
+]
 comment-prefix-identifiers = []
 comment-suffix-identifiers = []
 
@@ -906,9 +918,9 @@ Local release artifact checks should use:
 uv build --no-sources
 ```
 
-Tagged releases are published by GitHub Actions. The workflow builds a Python
-3.11+ `abi3` manylinux wheel so supported CPython versions can install without
-building from source.
+Tagged releases are published by GitHub Actions. The workflow builds an sdist
+and Python 3.11+ `abi3` wheels for Linux x86-64, macOS x86-64 and arm64, and
+Windows x86-64. Each wheel installs without building from source.
 
 Publishing is configured for PyPI Trusted Publishing:
 

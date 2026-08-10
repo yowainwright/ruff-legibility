@@ -77,6 +77,13 @@ max-expression-operators = 7
         with self.assertRaisesRegex(ValueError, "comment-matchers must be a list of strings"):
             apply_config(Settings(), {"comment-matchers": "HUMAN"})
 
+    def test_comment_matchers_require_valid_regexes(self) -> None:
+        settings = Settings()
+        table = {"comment-matchers": ["["]}
+
+        with self.assertRaisesRegex(ValueError, "Invalid comment matcher"):
+            apply_config(settings, table)
+
     def test_cli_overrides_new_integer_options(self) -> None:
         settings = apply_overrides(
             Settings(),

@@ -43,12 +43,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             min_object_lookup_chain_length=args.min_object_lookup_chain_length,
             min_dirname_match_depth=args.min_dirname_match_depth,
         )
+        paths = [Path(path) for path in args.paths]
+        files = discover_python_files(paths, settings)
     except ValueError as error:
         print(f"ruff-legibility: {error}", file=sys.stderr)
         return 2
 
-    paths = [Path(path) for path in args.paths]
-    files = discover_python_files(paths, settings)
     diagnostics = _check_files(files, settings)
     _print_diagnostics(diagnostics, output_format=args.output_format)
 
