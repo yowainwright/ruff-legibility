@@ -36,9 +36,31 @@ class Diagnostic:
 
 
 def check_path(path: Path, settings: Settings) -> list[Diagnostic]:
-    with tokenize.open(path) as source_file:
-        source = source_file.read()
+    try:
+        source = _read_source(path)
+    except (SyntaxError, UnicodeError) as error:
+        return _source_read_diagnostics(path, error, settings)
+
     return check_source(source, path=path, settings=settings)
+
+
+def _read_source(path: Path) -> str:
+    with tokenize.open(path) as source_file:
+        return source_file.read()
+
+
+def _source_read_diagnostics(
+    path: Path,
+    error: SyntaxError | UnicodeError,
+    settings: Settings,
+) -> list[Diagnostic]:
+    if settings.ignored_for_path("LEG999", path):
+        return []
+
+    error_name = type(error).__name__
+    message = f"{error_name}: {error}"
+    diagnostic = Diagnostic(path=path, line=1, column=1, code="LEG999", message=message)
+    return [diagnostic]
 
 
 def check_source(source: str, *, path: Path, settings: Settings) -> list[Diagnostic]:

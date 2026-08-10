@@ -61,6 +61,40 @@ class CliTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             self.assertIn("LEG006", [item["code"] for item in output])
 
+    def test_cli_reports_unknown_encoding_as_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "unknown_encoding.py"
+            path.write_bytes(b"# coding: definitely-not-an-encoding\nvalue = 1\n")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            command = ["check", str(path), "--output-format", "json"]
+
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(command)
+
+            output = json.loads(stdout.getvalue())
+            diagnostic = output[0]
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(stderr.getvalue(), "")
+            self.assertEqual(diagnostic["code"], "LEG999")
+            self.assertIn("unknown encoding", diagnostic["message"])
+
+    def test_cli_reports_undecodable_source_as_json(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "invalid_utf8.py"
+            path.write_bytes(b"# coding: utf-8\nvalue = 'caf\xff'\n")
+            stdout = io.StringIO()
+            command = ["check", str(path), "--output-format", "json"]
+
+            with redirect_stdout(stdout):
+                exit_code = main(command)
+
+            output = json.loads(stdout.getvalue())
+            diagnostic = output[0]
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(diagnostic["code"], "LEG999")
+            self.assertIn("UnicodeDecodeError", diagnostic["message"])
+
     def test_cli_rules(self) -> None:
         stdout = io.StringIO()
         with redirect_stdout(stdout):
