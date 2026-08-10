@@ -197,7 +197,10 @@ impl Visitor {
         self.check_trivial_wrapper(function);
         self.check_guard_clause(function);
         self.visit_parameters(&function.parameters);
+        let enclosing_loop_depth = self.loop_depth;
+        self.loop_depth = 0;
         self.visit_body(&function.body);
+        self.loop_depth = enclosing_loop_depth;
     }
 
     fn visit_parameters(&mut self, parameters: &Parameters) {

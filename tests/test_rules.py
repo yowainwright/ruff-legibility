@@ -70,6 +70,49 @@ def f(items):
 """
         self.assertIn("LEG005", codes(source))
 
+    def test_function_inside_loop_resets_loop_context(self) -> None:
+        source = """
+for group in groups:
+    def handle(items, ids):
+        values = [item for item in items]
+        has_first = items[0] in ids
+        for item in items:
+            consume(item)
+        return values, has_first
+"""
+        selected_rules = ("LEG005",)
+        settings = Settings(select=selected_rules)
+        result = codes(source, settings=settings)
+
+        self.assertEqual(result, [])
+
+    def test_async_function_inside_loop_resets_loop_context(self) -> None:
+        source = """
+for group in groups:
+    async def handle(items):
+        return [item for item in items]
+"""
+        selected_rules = ("LEG005",)
+        settings = Settings(select=selected_rules)
+        result = codes(source, settings=settings)
+
+        self.assertEqual(result, [])
+
+    def test_function_inside_loop_restores_outer_loop_context(self) -> None:
+        source = """
+for group in groups:
+    def handle(item):
+        return item
+    if group in selected_groups:
+        consume(group)
+"""
+        selected_rules = ("LEG005",)
+        settings = Settings(select=selected_rules)
+        result = codes(source, settings=settings)
+        expected = ["LEG005"]
+
+        self.assertEqual(result, expected)
+
     def test_redundant_boolean_compare_reports(self) -> None:
         source = """
 def f(flag):
@@ -268,16 +311,43 @@ value = 1  # Keep this value stable.
 
         self.assertEqual(codes(source, settings=settings), ["LEG034", "LEG034"])
 
-    def test_unmatched_comments_reports_every_physical_comment(self) -> None:
-        source = """
-# Explain the first assignment.
-# Explain the second assignment.
-first = 1  # Keep the first value stable.
-second = 2  # Keep the second value stable.
-"""
-        settings = Settings(select=("LEG034",))
+    def test_unmatched_comments_reports_one_diagnostic_per_block(self) -> None:
+        source = "# First line.\n# Second line.\n# Third line.\nvalue = 1\n"
+        selected_rules = ("LEG034",)
+        settings = Settings(select=selected_rules)
+        path = Path("example.py")
 
-        self.assertEqual(codes(source, settings=settings), ["LEG034"] * 4)
+        diagnostics = check_source(source, path=path, settings=settings)
+        diagnostic_count = len(diagnostics)
+        diagnostic = diagnostics[0]
+
+        self.assertEqual(diagnostic_count, 1)
+        self.assertEqual(diagnostic.line, 1)
+        self.assertEqual(diagnostic.end_line, 3)
+
+    def test_unmatched_comment_block_supports_noqa_on_first_line(self) -> None:
+        source = """# First line.  # noqa: LEG034
+# Second line.
+# Third line.
+value = 1
+"""
+        selected_rules = ("LEG034",)
+        settings = Settings(select=selected_rules)
+        result = codes(source, settings=settings)
+
+        self.assertEqual(result, [])
+
+    def test_unmatched_comments_allow_default_tool_directives(self) -> None:
+        source = """
+def load(items, ids):
+    values = [item for item in items]  # noqa: LEG005
+    return convert(values)  # type: ignore[arg-type]
+"""
+        selected_rules = ("LEG034",)
+        settings = Settings(select=selected_rules)
+        result = codes(source, settings=settings)
+
+        self.assertEqual(result, [])
 
     def test_unmatched_comments_accepts_configured_comment_blocks(self) -> None:
         source = """
@@ -485,17 +555,23 @@ def f():
             with self.subTest(source=source):
                 self.assertEqual(codes(source, settings=settings), ["LEG034"])
 
-    def test_unmatched_comments_ignores_invalid_matcher_patterns(self) -> None:
+    def test_unmatched_comments_rejects_invalid_matcher_patterns(self) -> None:
         source = "# Explain the assignment.\nvalue = 1\n"
-        settings = Settings(select=("LEG034",), comment_matchers=("[",))
+        selected_rules = ("LEG034",)
+        comment_matchers = ("[",)
+        settings = Settings(select=selected_rules, comment_matchers=comment_matchers)
 
-        self.assertEqual(codes(source, settings=settings), ["LEG034"])
+        with self.assertRaisesRegex(ValueError, "Invalid comment matcher"):
+            codes(source, settings=settings)
 
-    def test_unmatched_comments_ignores_overflowed_matcher_quantifiers(self) -> None:
+    def test_unmatched_comments_rejects_overflowed_matcher_quantifiers(self) -> None:
         source = "# Explain the assignment.\nvalue = 1\n"
-        settings = Settings(select=("LEG034",), comment_matchers=("a{4294967296}",))
+        selected_rules = ("LEG034",)
+        comment_matchers = ("a{4294967296}",)
+        settings = Settings(select=selected_rules, comment_matchers=comment_matchers)
 
-        self.assertEqual(codes(source, settings=settings), ["LEG034"])
+        with self.assertRaisesRegex(ValueError, "Invalid comment matcher"):
+            codes(source, settings=settings)
 
     def test_unmatched_comments_supports_noqa(self) -> None:
         source = "value = 1  # Temporary compatibility path.  # noqa: LEG034\n"

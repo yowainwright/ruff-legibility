@@ -82,6 +82,33 @@ def f(items):
 """
         self.assertNotIn("LEG005", native_codes(source))
 
+    def test_function_inside_loop_resets_loop_context(self) -> None:
+        source = """
+for group in groups:
+    def handle(items, ids):
+        values = [item for item in items]
+        has_first = items[0] in ids
+        for item in items:
+            consume(item)
+        return values, has_first
+"""
+        result = native_codes(source)
+
+        self.assertNotIn("LEG005", result)
+
+    def test_function_inside_loop_restores_outer_loop_context(self) -> None:
+        source = """
+for group in groups:
+    def handle(item):
+        return item
+    if group in selected_groups:
+        consume(group)
+"""
+        result = native_codes(source)
+        expected = ["LEG005"]
+
+        self.assertEqual(result, expected)
+
 
 if __name__ == "__main__":
     unittest.main()

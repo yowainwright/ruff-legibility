@@ -95,6 +95,24 @@ class CliTests(unittest.TestCase):
             self.assertEqual(diagnostic["code"], "LEG999")
             self.assertIn("UnicodeDecodeError", diagnostic["message"])
 
+    def test_cli_rejects_invalid_comment_matcher(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "example.py"
+            config = root / "ruff-legibility.toml"
+            path.write_text("value = 1\n")
+            config.write_text("comment-matchers = ['[']\n")
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            command = ["check", str(path), "--config", str(config)]
+
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = main(command)
+
+            self.assertEqual(exit_code, 2)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertIn("Invalid comment matcher", stderr.getvalue())
+
     def test_cli_rules(self) -> None:
         stdout = io.StringIO()
         with redirect_stdout(stdout):
