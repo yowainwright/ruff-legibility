@@ -1,0 +1,26 @@
+name: update infrastructure dependencies
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 3"
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: main
+      - name: Update dependencies
+        uses: yowainwright/codependence@c892b09ad94aeb79e6ac0b9c0e117ecf4ef6bf14 # v1.0.8
+        with:
+          targets: docker github-actions
+          pull-request: true
+          token: ${{ secrets.CODEPENDENCE_TOKEN }}
+          post-update-command: git diff --check
