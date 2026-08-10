@@ -1,0 +1,53 @@
+name: update Python dependencies
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: main
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Setup uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          version: "0.7.19"
+      - name: Install Codependence
+        run: |
+          npm install --global codependence@1.0.8 \
+            --ignore-scripts \
+            --no-audit \
+            --no-fund
+      - name: Update dependencies
+        run: codependence --target pip --update
+      - name: Refresh lockfile
+        run: uv lock --upgrade
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          add-paths: |
+            pyproject.toml
+            uv.lock
+          base: main
+          branch: update-dependencies/pip
+          commit-message: "chore: update pip dependencies"
+          delete-branch: true
+          title: "chore: update pip dependencies"
+          token: ${{ secrets.CODEPENDENCE_TOKEN }}

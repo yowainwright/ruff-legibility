@@ -1,0 +1,24 @@
+{
+  "targets": [
+    {
+      "manager": "pip",
+      "files": ["pyproject.toml"],
+      "mode": "precise"
+    },
+    {
+      "manager": "rust",
+      "files": ["Cargo.toml"],
+      "mode": "precise"
+    },
+    {
+      "manager": "docker",
+      "files": ["tests/e2es/Dockerfile*"],
+      "mode": "precise"
+    },
+    {
+      "manager": "github-actions",
+      "files": [".github/workflows/*.yml", ".github/workflows/*.yaml"],
+      "mode": "precise"
+    }
+  ]
+}
