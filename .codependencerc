@@ -1,7 +1,7 @@
 {
   "targets": [
     {
-      "manager": "pip",
+      "manager": "uv",
       "files": ["pyproject.toml"],
       "mode": "precise"
     },

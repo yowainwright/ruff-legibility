@@ -11,12 +11,9 @@ dist/
 target/
 *.egg-info/
 
-# Beads / Dolt files (added by bd init)
 .dolt/
 *.db
-.beads-credential-key
 CLAUDE.md
-.beads/
 venv/
 *.pyc
 .claude/

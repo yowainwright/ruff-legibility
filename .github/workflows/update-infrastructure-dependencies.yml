@@ -13,12 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: main
       - name: Update dependencies
-        uses: yowainwright/codependence@c892b09ad94aeb79e6ac0b9c0e117ecf4ef6bf14 # v1.0.8
+        uses: yowainwright/codependence@add92453b85ffafb511988545fc153ba25b04792 # v1.1.1
         with:
           targets: docker github-actions
           pull-request: true

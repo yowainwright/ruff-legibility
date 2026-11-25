@@ -356,8 +356,7 @@ impl Visitor {
     fn visit_compare(&mut self, node: &ruff_python_ast::ExprCompare) {
         self.check_redundant_boolean_compare(node);
         self.check_membership_search(node);
-        self.visit_expr(&node.left);
-        self.visit_many_exprs(&node.comparators);
+        self.visit_many_exprs(&node.operands);
     }
 
     fn visit_bool_op(&mut self, node: &ruff_python_ast::ExprBoolOp) {
@@ -784,7 +783,7 @@ fn collect_expression_children<'a>(expression: &'a Expr, children: &mut ExprRefs
         Expr::BinOp(node) => collect_two(children, &node.left, &node.right),
         Expr::UnaryOp(node) => children.push(&node.operand),
         Expr::If(node) => collect_three(children, &node.test, &node.body, &node.orelse),
-        Expr::Compare(node) => collect_compare_children(children, node),
+        Expr::Compare(node) => children.extend(node.operands.iter()),
         Expr::Call(node) => collect_call_children(children, node),
         Expr::Attribute(node) => children.push(&node.value),
         Expr::Subscript(node) => collect_two(children, &node.value, &node.slice),
@@ -808,11 +807,6 @@ fn collect_three<'a>(children: &mut ExprRefs<'a>, first: &'a Expr, second: &'a E
     children.push(third);
 }
 
-fn collect_compare_children<'a>(children: &mut ExprRefs<'a>, node: &'a ruff_python_ast::ExprCompare) {
-    children.push(&node.left);
-    children.extend(node.comparators.iter());
-}
-
 fn collect_call_children<'a>(children: &mut ExprRefs<'a>, node: &'a ruff_python_ast::ExprCall) {
     children.push(&node.func);
     children.extend(node.arguments.args.iter());
@@ -828,8 +822,7 @@ fn collect_dict_children<'a>(children: &mut ExprRefs<'a>, node: &'a ruff_python_
 }
 
 fn has_redundant_boolean_compare(node: &ruff_python_ast::ExprCompare) -> bool {
-    for pair in node.ops.iter().zip(node.comparators.iter()) {
-        let (operator, comparator) = pair;
+    for (operator, comparator) in node.ops.iter().zip(node.comparators()) {
         let is_equality = matches!(operator, CmpOp::Eq | CmpOp::NotEq);
         if is_equality == false {
             continue;
