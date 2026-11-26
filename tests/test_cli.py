@@ -182,7 +182,7 @@ class CliTests(unittest.TestCase):
             main(["--version"])
 
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("ruff-legibility 0.4.0", stdout.getvalue())
+        self.assertIn("ruff-legibility 0.4.2", stdout.getvalue())
 
     def test_default_check_accepts_check_options(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

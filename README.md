@@ -733,7 +733,7 @@ repos:
         entry: ruff-legibility check
         language: python
         additional_dependencies:
-          - ruff-legibility==0.4.0
+          - ruff-legibility==0.4.2
         types: [python]
 ```
 
