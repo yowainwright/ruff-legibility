@@ -31,6 +31,14 @@ jobs:
       - name: Install Python
         run: |
           uv python install 3.11
+      - name: Verify release tag matches package version
+        run: |
+          package_version=$(uv version --short)
+          tag_version=$(uv version --dry-run --frozen --short "${GITHUB_REF_NAME#v}")
+          if [[ "$tag_version" != "$package_version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME points to package version $package_version"
+            exit 1
+          fi
       - name: Install dependencies
         run: |
           uv sync --locked --all-groups
